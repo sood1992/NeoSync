@@ -51,7 +51,7 @@ class DropZone(QWidget):
         layout.addWidget(icon_label)
 
         # Main text
-        title = QLabel("Drop your clips here")
+        title = QLabel("Drop your clips or folders here")
         title.setProperty("class", "title")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setStyleSheet("font-size: 20px; font-weight: 600;")
@@ -73,7 +73,7 @@ class DropZone(QWidget):
         layout.addWidget(browse_btn, alignment=Qt.AlignmentFlag.AlignCenter)
 
         # Supported formats
-        formats_label = QLabel("Supports: MP4, MOV, MXF, WAV, MP3, and more")
+        formats_label = QLabel("Supports: MP4, MOV, MXF, WAV, MP3, folders, and more")
         formats_label.setProperty("class", "muted")
         formats_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         formats_label.setStyleSheet("font-size: 12px; color: #666; margin-top: 20px;")
@@ -106,18 +106,51 @@ class DropZone(QWidget):
         self.update()
 
     def dropEvent(self, event: QDropEvent):
-        """Handle file drop"""
+        """Handle file and folder drop"""
         self._dragging = False
         self.update()
 
         files = []
         for url in event.mimeData().urls():
             path = url.toLocalFile()
-            if self._is_supported_file(path):
+            if self._is_directory(path):
+                # Recursively collect all supported files from the folder
+                files.extend(self._collect_files_from_folder(path))
+            elif self._is_supported_file(path):
                 files.append(path)
 
         if files:
             self.files_dropped.emit(files)
+
+    def _is_directory(self, path: str) -> bool:
+        """Check if path is a directory"""
+        import os
+        return os.path.isdir(path)
+
+    def _collect_files_from_folder(self, folder_path: str) -> list:
+        """Recursively collect all supported media files from a folder"""
+        import os
+        collected_files = []
+
+        try:
+            for root, dirs, files in os.walk(folder_path):
+                # Skip hidden directories
+                dirs[:] = [d for d in dirs if not d.startswith('.')]
+
+                for file in files:
+                    # Skip hidden files
+                    if file.startswith('.'):
+                        continue
+                    file_path = os.path.join(root, file)
+                    if self._is_supported_file(file_path):
+                        collected_files.append(file_path)
+        except (PermissionError, OSError):
+            # Skip folders we can't access
+            pass
+
+        # Sort files for consistent ordering
+        collected_files.sort()
+        return collected_files
 
     def _is_supported_file(self, path: str) -> bool:
         """Check if file is supported"""

@@ -29,9 +29,14 @@ class StatusDelegate(QStyledItemDelegate):
 
     def paint(self, painter, option, index):
         """Custom paint for status cell"""
-        # Get clip data
-        clip = index.data(Qt.ItemDataRole.UserRole)
-        if not isinstance(clip, ClipInfo):
+        # Get clip data - handle None/invalid data during table updates (race condition)
+        try:
+            clip = index.data(Qt.ItemDataRole.UserRole)
+            if not isinstance(clip, ClipInfo):
+                super().paint(painter, option, index)
+                return
+        except (RuntimeError, TypeError):
+            # Handle case where underlying C++ object has been deleted
             super().paint(painter, option, index)
             return
 
@@ -44,9 +49,17 @@ class StatusDelegate(QStyledItemDelegate):
         elif option.state & QStyle.StateFlag.State_MouseOver:
             painter.fillRect(option.rect, QColor("#252525"))
 
-        # Draw badge
-        text = clip.sync_quality.name if clip.sync_status != SyncStatus.REFERENCE else "REFERENCE"
-        color = "#3b82f6" if clip.is_reference else self.QUALITY_COLORS.get(clip.sync_quality, "#666")
+        # Draw badge - safely handle None sync_quality during initial import
+        sync_quality = clip.sync_quality if clip.sync_quality is not None else SyncQuality.FAILED
+        if clip.sync_status == SyncStatus.REFERENCE:
+            text = "REFERENCE"
+        elif clip.sync_status == SyncStatus.PENDING:
+            text = "PENDING"
+        elif clip.sync_status == SyncStatus.ANALYZING:
+            text = "ANALYZING"
+        else:
+            text = sync_quality.name
+        color = "#3b82f6" if clip.is_reference else self.QUALITY_COLORS.get(sync_quality, "#666")
 
         badge_rect = QRect(
             option.rect.x() + 10,
@@ -84,8 +97,14 @@ class ConfidenceDelegate(QStyledItemDelegate):
 
     def paint(self, painter, option, index):
         """Custom paint for confidence cell"""
-        clip = index.data(Qt.ItemDataRole.UserRole)
-        if not isinstance(clip, ClipInfo):
+        # Get clip data - handle None/invalid data during table updates (race condition)
+        try:
+            clip = index.data(Qt.ItemDataRole.UserRole)
+            if not isinstance(clip, ClipInfo):
+                super().paint(painter, option, index)
+                return
+        except (RuntimeError, TypeError):
+            # Handle case where underlying C++ object has been deleted
             super().paint(painter, option, index)
             return
 
@@ -109,9 +128,12 @@ class ConfidenceDelegate(QStyledItemDelegate):
         painter.setPen(Qt.PenStyle.NoPen)
         painter.drawRoundedRect(bar_rect, 4, 4)
 
-        # Progress bar fill
-        color = self.QUALITY_COLORS.get(clip.sync_quality, "#666")
-        fill_width = int(bar_rect.width() * clip.sync_confidence)
+        # Progress bar fill - safely handle None values during initial import
+        sync_quality = clip.sync_quality if clip.sync_quality is not None else SyncQuality.FAILED
+        sync_confidence = clip.sync_confidence if clip.sync_confidence is not None else 0.0
+
+        color = self.QUALITY_COLORS.get(sync_quality, "#666")
+        fill_width = int(bar_rect.width() * sync_confidence)
         fill_rect = QRect(bar_rect.x(), bar_rect.y(), fill_width, bar_rect.height())
         painter.setBrush(QColor(color))
         painter.drawRoundedRect(fill_rect, 4, 4)
@@ -127,7 +149,7 @@ class ConfidenceDelegate(QStyledItemDelegate):
         font = painter.font()
         font.setPointSize(11)
         painter.setFont(font)
-        painter.drawText(text_rect, Qt.AlignmentFlag.AlignVCenter, f"{clip.sync_confidence:.0%}")
+        painter.drawText(text_rect, Qt.AlignmentFlag.AlignVCenter, f"{sync_confidence:.0%}")
 
         painter.restore()
 
