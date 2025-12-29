@@ -208,9 +208,9 @@ class ClipTableWidget(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
 
-        # Custom delegates
-        self.table.setItemDelegateForColumn(3, StatusDelegate())
-        self.table.setItemDelegateForColumn(4, ConfidenceDelegate())
+        # Custom delegates - disabled temporarily for macOS stability testing
+        # self.table.setItemDelegateForColumn(3, StatusDelegate())
+        # self.table.setItemDelegateForColumn(4, ConfidenceDelegate())
 
         # Signals
         self.table.customContextMenuRequested.connect(self._show_context_menu)

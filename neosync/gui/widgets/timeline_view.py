@@ -248,12 +248,9 @@ class TimelineCanvas(QWidget):
         self._zoom = zoom
 
     def paintEvent(self, event):
-        """Paint the timeline - with safe mode for macOS stability"""
-        # Always use safe rendering to avoid macOS crashes
-        if self._use_safe_rendering or not self._tracks:
-            # Use simple solid color rendering - no gradients or font modifications
-            self._paint_safe(event)
-            return
+        """Paint the timeline - disabled for macOS stability"""
+        # Completely skip custom painting to prevent crashes
+        pass
 
     def _paint_safe(self, event):
         """Safe painting mode - minimal operations to avoid macOS crashes"""

@@ -251,11 +251,9 @@ class WaveformCanvas(QWidget):
         return display
 
     def paintEvent(self, event):
-        """Paint the waveforms - with safe mode for macOS stability"""
-        # Always use safe rendering to avoid macOS crashes
-        if self._use_safe_rendering:
-            self._paint_safe(event)
-            return
+        """Paint the waveforms - disabled for macOS stability"""
+        # Completely skip custom painting to prevent crashes
+        pass
 
     def _paint_safe(self, event):
         """Safe painting mode - minimal operations to avoid macOS crashes"""
