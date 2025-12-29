@@ -86,37 +86,40 @@ class QualityBar(QWidget):
         self.update()
 
     def paintEvent(self, event):
-        """Paint the quality bar"""
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        """Paint the quality bar - with crash protection"""
+        try:
+            painter = QPainter(self)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        total = sum(self._counts.values()) if self._counts else 0
+            total = sum(self._counts.values()) if self._counts else 0
 
-        # Background
-        painter.setBrush(QColor("#1e1e1e"))
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawRoundedRect(self.rect(), 3, 3)
+            # Background
+            painter.setBrush(QColor("#1e1e1e"))
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.drawRoundedRect(self.rect(), 3, 3)
 
-        if total == 0:
-            return
+            if total == 0:
+                return
 
-        x = 0
-        height = self.height()
+            x = 0
+            height = self.height()
 
-        for quality in [SyncQuality.EXCELLENT, SyncQuality.GOOD, SyncQuality.FAIR,
-                       SyncQuality.POOR, SyncQuality.FAILED]:
-            count = self._counts.get(quality, 0)
-            if count > 0:
-                width = int((count / total) * self.width())
-                color = QColor(self.COLORS.get(quality, "#666"))
-                painter.setBrush(color)
+            for quality in [SyncQuality.EXCELLENT, SyncQuality.GOOD, SyncQuality.FAIR,
+                           SyncQuality.POOR, SyncQuality.FAILED]:
+                count = self._counts.get(quality, 0)
+                if count > 0:
+                    width = int((count / total) * self.width())
+                    color = QColor(self.COLORS.get(quality, "#666"))
+                    painter.setBrush(color)
 
-                # Handle corners
-                if x == 0:
-                    painter.drawRoundedRect(x, 0, max(width, 3), height, 3, 3)
-                else:
-                    painter.drawRect(x, 0, max(width, 2), height)
-                x += width
+                    # Handle corners
+                    if x == 0:
+                        painter.drawRoundedRect(x, 0, max(width, 3), height, 3, 3)
+                    else:
+                        painter.drawRect(x, 0, max(width, 2), height)
+                    x += width
+        except Exception as e:
+            print(f"[ERROR] QualityBar.paintEvent: {e}")
 
 
 class StatsPanel(QWidget):

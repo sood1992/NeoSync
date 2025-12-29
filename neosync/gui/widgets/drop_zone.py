@@ -191,41 +191,44 @@ class DropZone(QWidget):
         return ext in self.SUPPORTED_EXTENSIONS
 
     def paintEvent(self, event):
-        """Custom paint for drop zone"""
-        super().paintEvent(event)
+        """Custom paint for drop zone - with crash protection"""
+        try:
+            super().paintEvent(event)
 
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter = QPainter(self)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        rect = self.rect().adjusted(20, 20, -20, -20)
+            rect = self.rect().adjusted(20, 20, -20, -20)
 
-        # Draw background and border
-        if self._dragging:
-            # Active drop state
-            bg_color = QColor("#7c3aed")
-            bg_color.setAlpha(15)
-            border_color = QColor("#7c3aed")
-            border_width = 2
-        else:
-            # Default state
-            bg_color = QColor("#141414")
-            border_color = QColor("#2a2a2a")
-            border_width = 1
+            # Draw background and border
+            if self._dragging:
+                # Active drop state
+                bg_color = QColor("#7c3aed")
+                bg_color.setAlpha(15)
+                border_color = QColor("#7c3aed")
+                border_width = 2
+            else:
+                # Default state
+                bg_color = QColor("#141414")
+                border_color = QColor("#2a2a2a")
+                border_width = 1
 
-        # Fill background
-        painter.setBrush(bg_color)
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawRoundedRect(rect, 16, 16)
+            # Fill background
+            painter.setBrush(bg_color)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.drawRoundedRect(rect, 16, 16)
 
-        # Draw dashed border
-        pen = QPen(border_color, border_width, Qt.PenStyle.DashLine)
-        pen.setDashPattern([8, 6])
-        painter.setPen(pen)
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawRoundedRect(rect.adjusted(1, 1, -1, -1), 16, 16)
+            # Draw dashed border
+            pen = QPen(border_color, border_width, Qt.PenStyle.DashLine)
+            pen.setDashPattern([8, 6])
+            painter.setPen(pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRoundedRect(rect.adjusted(1, 1, -1, -1), 16, 16)
 
-        # Draw upload icon
-        self._draw_upload_icon(painter, rect)
+            # Draw upload icon
+            self._draw_upload_icon(painter, rect)
+        except Exception as e:
+            print(f"[ERROR] DropZone.paintEvent: {e}")
 
     def _draw_upload_icon(self, painter: QPainter, rect):
         """Draw a clean upload arrow icon"""

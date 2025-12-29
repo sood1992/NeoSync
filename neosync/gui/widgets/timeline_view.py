@@ -246,31 +246,34 @@ class TimelineCanvas(QWidget):
         self._zoom = zoom
 
     def paintEvent(self, event):
-        """Paint the timeline"""
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        """Paint the timeline - with crash protection"""
+        try:
+            painter = QPainter(self)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        # Background
-        painter.fillRect(self.rect(), QColor("#0d0d0d"))
+            # Background
+            painter.fillRect(self.rect(), QColor("#0d0d0d"))
 
-        if not self._tracks:
-            # Clean empty state
-            painter.setPen(QColor("#3a3a3a"))
-            font = painter.font()
-            font.setPointSize(12)
-            painter.setFont(font)
-            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "No clips to display")
-            return
+            if not self._tracks:
+                # Clean empty state
+                painter.setPen(QColor("#3a3a3a"))
+                font = painter.font()
+                font.setPointSize(12)
+                painter.setFont(font)
+                painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "No clips to display")
+                return
 
-        # Draw time ruler
-        self._draw_ruler(painter)
+            # Draw time ruler
+            self._draw_ruler(painter)
 
-        # Draw tracks
-        y = self.HEADER_HEIGHT
-        for i, (camera_id, clips) in enumerate(self._tracks.items()):
-            color = self.TRACK_COLORS[i % len(self.TRACK_COLORS)]
-            self._draw_track(painter, camera_id, clips, y, color, i)
-            y += self.TRACK_HEIGHT
+            # Draw tracks
+            y = self.HEADER_HEIGHT
+            for i, (camera_id, clips) in enumerate(self._tracks.items()):
+                color = self.TRACK_COLORS[i % len(self.TRACK_COLORS)]
+                self._draw_track(painter, camera_id, clips, y, color, i)
+                y += self.TRACK_HEIGHT
+        except Exception as e:
+            print(f"[ERROR] TimelineCanvas.paintEvent: {e}")
 
     def _draw_ruler(self, painter: QPainter):
         """Draw time ruler at top"""
