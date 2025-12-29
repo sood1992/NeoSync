@@ -5,13 +5,14 @@ Clip Table Widget
 Table view showing all clips with sync status.
 """
 
+import os
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
     QHeaderView, QLabel, QPushButton, QMenu, QAbstractItemView,
     QStyledItemDelegate, QStyle
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QRect
-from PyQt6.QtGui import QColor, QPainter, QBrush, QPen, QAction
+from PyQt6.QtGui import QColor, QPainter, QBrush, QPen, QAction, QDragEnterEvent, QDropEvent
 
 from ...core.sync_engine import ClipInfo, SyncStatus, SyncQuality
 
@@ -138,11 +139,19 @@ class ClipTableWidget(QWidget):
     - Context menu for actions
     - Multi-select support
     - Sorting by columns
+    - Drag and drop to add more files
     """
 
     clip_selected = pyqtSignal(object)  # ClipInfo
     clips_removed = pyqtSignal(list)  # List of clip IDs
     set_reference_requested = pyqtSignal(object)  # ClipInfo
+    files_dropped = pyqtSignal(list)  # List of file paths (for drag-drop)
+
+    SUPPORTED_EXTENSIONS = {
+        '.mp4', '.mov', '.avi', '.mkv', '.mxf', '.m4v', '.wmv',  # Video
+        '.mp3', '.wav', '.aac', '.m4a', '.flac', '.ogg',  # Audio
+        '.r3d', '.braw', '.ari',  # RAW formats
+    }
 
     COLUMNS = [
         ("File Name", 250),
@@ -158,6 +167,7 @@ class ClipTableWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._clips = []
+        self.setAcceptDrops(True)  # Enable drag-drop to add more files
         self._setup_ui()
 
     def _setup_ui(self):
@@ -365,3 +375,52 @@ class ClipTableWidget(QWidget):
             if isinstance(clip, ClipInfo) and clip not in clips:
                 clips.append(clip)
         return clips
+
+    # === Drag and Drop Support ===
+
+    def dragEnterEvent(self, event: QDragEnterEvent):
+        """Handle drag enter - accept if files/folders"""
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+
+    def dragMoveEvent(self, event):
+        """Handle drag move"""
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+
+    def dropEvent(self, event: QDropEvent):
+        """Handle file and folder drop"""
+        files = []
+        for url in event.mimeData().urls():
+            path = url.toLocalFile()
+            if os.path.isdir(path):
+                # Recursively collect all supported files from the folder
+                files.extend(self._collect_files_from_folder(path))
+            elif self._is_supported_file(path):
+                files.append(path)
+
+        if files:
+            self.files_dropped.emit(files)
+
+    def _collect_files_from_folder(self, folder_path: str) -> list:
+        """Recursively collect all supported media files from a folder"""
+        collected_files = []
+        try:
+            for root, dirs, files in os.walk(folder_path):
+                # Skip hidden directories
+                dirs[:] = [d for d in dirs if not d.startswith('.')]
+                for file in files:
+                    if file.startswith('.'):
+                        continue
+                    file_path = os.path.join(root, file)
+                    if self._is_supported_file(file_path):
+                        collected_files.append(file_path)
+        except (PermissionError, OSError):
+            pass
+        collected_files.sort()
+        return collected_files
+
+    def _is_supported_file(self, path: str) -> bool:
+        """Check if file is supported"""
+        ext = os.path.splitext(path)[1].lower()
+        return ext in self.SUPPORTED_EXTENSIONS

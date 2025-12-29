@@ -190,6 +190,7 @@ class MainWindow(QMainWindow):
         self.clip_table.clip_selected.connect(self._on_clip_selected)
         self.clip_table.clips_removed.connect(self._on_clips_removed)
         self.clip_table.set_reference_requested.connect(self._on_set_reference)
+        self.clip_table.files_dropped.connect(self._on_files_dropped)  # Allow drag-drop even after files are added
         self.stack.addWidget(self.clip_table)
 
         center_layout.addWidget(self.stack)
