@@ -32,15 +32,7 @@ def main():
     app.setOrganizationName("NeoFox")
     app.setOrganizationDomain("neofox.com")
 
-    # Set default font - use system-safe fonts
-    import platform
-    if platform.system() == "Darwin":  # macOS
-        font = QFont(".AppleSystemUIFont", 13)  # System font on macOS
-    elif platform.system() == "Windows":
-        font = QFont("Segoe UI", 13)
-    else:
-        font = QFont("sans-serif", 13)
-    app.setFont(font)
+    # Don't set custom font - let system use its default
 
     # Apply dark theme
     apply_theme(app, ThemeMode.DARK)

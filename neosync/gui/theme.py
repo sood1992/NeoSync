@@ -168,7 +168,6 @@ class Theme:
         QMainWindow, QWidget {{
             background-color: {p.bg_primary};
             color: {p.text_primary};
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
             font-size: 13px;
         }}
 
