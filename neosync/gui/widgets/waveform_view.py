@@ -250,12 +250,10 @@ class WaveformCanvas(QWidget):
 
     def paintEvent(self, event):
         """Paint the waveforms - with crash protection"""
+        painter = None
         try:
-            print("[DEBUG] WaveformCanvas.paintEvent starting...")
             painter = QPainter(self)
-            print("[DEBUG] WaveformCanvas.paintEvent QPainter created")
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            print("[DEBUG] WaveformCanvas.paintEvent antialiasing set")
 
             # Background
             painter.fillRect(self.rect(), QColor("#0d0d0d"))
@@ -276,23 +274,25 @@ class WaveformCanvas(QWidget):
                 painter.setFont(font)
                 painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter,
                                "Select a clip to view waveform")
-                return
+            else:
+                # Draw reference waveform (top half, blue)
+                if self._reference is not None:
+                    ref_data = self._get_display_data(self._reference, width)
+                    self._draw_waveform(painter, ref_data, 10, mid_y - 20, "#3b82f6", "Reference")
 
-            # Draw reference waveform (top half, blue)
-            if self._reference is not None:
-                ref_data = self._get_display_data(self._reference, width)
-                self._draw_waveform(painter, ref_data, 10, mid_y - 20, "#3b82f6", "Reference")
+                # Draw selected waveform (bottom half, purple)
+                if self._selected is not None:
+                    sel_data = self._get_display_data(self._selected, width, self._selected_offset)
+                    self._draw_waveform(painter, sel_data, mid_y + 10, height - mid_y - 20, "#8b5cf6", "Selected")
 
-            # Draw selected waveform (bottom half, purple)
-            if self._selected is not None:
-                sel_data = self._get_display_data(self._selected, width, self._selected_offset)
-                self._draw_waveform(painter, sel_data, mid_y + 10, height - mid_y - 20, "#8b5cf6", "Selected")
-
-            # Draw alignment guide
-            painter.setPen(QPen(QColor("#22c55e"), 2, Qt.PenStyle.DashLine))
-            painter.drawLine(width // 2, 0, width // 2, height)
+                # Draw alignment guide
+                painter.setPen(QPen(QColor("#22c55e"), 2, Qt.PenStyle.DashLine))
+                painter.drawLine(width // 2, 0, width // 2, height)
         except Exception as e:
             print(f"[ERROR] WaveformCanvas.paintEvent: {e}")
+        finally:
+            if painter:
+                painter.end()
 
     def _draw_waveform(self, painter: QPainter, data: np.ndarray, y_start: int, height: int,
                        color: str, label: str):

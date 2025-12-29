@@ -192,15 +192,12 @@ class DropZone(QWidget):
 
     def paintEvent(self, event):
         """Custom paint for drop zone - with crash protection"""
+        painter = None
         try:
-            print("[DEBUG] DropZone.paintEvent starting...")
             super().paintEvent(event)
-            print("[DEBUG] DropZone.paintEvent super() done")
 
             painter = QPainter(self)
-            print("[DEBUG] DropZone.paintEvent QPainter created")
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            print("[DEBUG] DropZone.paintEvent antialiasing set")
 
             rect = self.rect().adjusted(20, 20, -20, -20)
 
@@ -233,6 +230,9 @@ class DropZone(QWidget):
             self._draw_upload_icon(painter, rect)
         except Exception as e:
             print(f"[ERROR] DropZone.paintEvent: {e}")
+        finally:
+            if painter:
+                painter.end()
 
     def _draw_upload_icon(self, painter: QPainter, rect):
         """Draw a clean upload arrow icon"""
