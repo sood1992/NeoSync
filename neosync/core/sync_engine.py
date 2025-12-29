@@ -269,6 +269,9 @@ class SyncEngine:
         total = len(clips)
         completed = 0
 
+        # Report initial progress so user sees something immediately
+        self._report_progress(0.01, f"Starting analysis of {total} clips...")
+
         def analyze_single(clip: ClipInfo):
             nonlocal completed
 
@@ -277,18 +280,23 @@ class SyncEngine:
 
             clip.sync_status = SyncStatus.ANALYZING
             self._report_status(clip)
+            # Report starting this clip
+            self._report_progress(completed / total, f"Analyzing: {clip.file_name}")
 
             try:
-                # Extract metadata
+                # Extract metadata first (fast)
                 if analyze_metadata:
                     clip.metadata = self.metadata_extractor.extract(clip.file_path)
                     clip.camera_id = clip.metadata.camera_id
+                    # Report metadata done
+                    self._report_progress((completed + 0.3) / total, f"Extracting audio: {clip.file_name}")
 
-                # Audio fingerprint
+                # Audio fingerprint (can be slow)
                 if analyze_audio and clip.has_audio:
                     clip.audio_fingerprint = self.audio_analyzer.compute_fingerprint(
                         clip.file_path
                     )
+                    self._report_progress((completed + 0.6) / total, f"Analyzing video: {clip.file_name}")
 
                 # Visual fingerprint (for all clips, essential for audio-less)
                 if analyze_visual:
@@ -297,6 +305,7 @@ class SyncEngine:
                     )
 
                 clip.sync_status = SyncStatus.PENDING  # Ready for sync
+                self._report_progress((completed + 0.9) / total, f"Completed: {clip.file_name}")
 
             except Exception as e:
                 clip.sync_status = SyncStatus.FAILED
