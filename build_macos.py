@@ -2,13 +2,14 @@
 macOS Build Script
 ==================
 
-Creates a macOS application bundle and DMG for NeoSync using py2app.
+Creates a macOS application bundle and DMG for NeoSync using PyInstaller.
+(Switched from py2app to avoid recursion issues with complex dependencies)
 
 Usage:
-    python build_macos.py
+    python3 build_macos.py
 
 Requirements:
-    pip install py2app dmgbuild
+    pip3 install pyinstaller
 """
 
 import os
@@ -17,6 +18,9 @@ import shutil
 import subprocess
 import plistlib
 from pathlib import Path
+
+# Fix recursion limit for complex dependencies
+sys.setrecursionlimit(5000)
 
 # Configuration
 APP_NAME = "NeoSync"
@@ -38,6 +42,10 @@ def clean():
     for d in [DIST_DIR, BUILD_DIR]:
         if d.exists():
             shutil.rmtree(d)
+    # Also clean spec file
+    spec_file = ROOT_DIR / f"{APP_NAME}.spec"
+    if spec_file.exists():
+        spec_file.unlink()
 
 
 def create_icon():
@@ -50,85 +58,86 @@ def create_icon():
     return str(icon_path)
 
 
-def create_setup_py():
-    """Create py2app setup script"""
-    print("Creating py2app setup...")
+def build_app():
+    """Build .app bundle with PyInstaller"""
+    print("Building .app bundle with PyInstaller...")
 
     icon = create_icon()
 
-    options = {
-        'py2app': {
-            'argv_emulation': False,
-            'iconfile': icon,
-            'plist': {
-                'CFBundleName': APP_NAME,
+    cmd = [
+        sys.executable, "-m", "PyInstaller",
+        "--name", APP_NAME,
+        "--windowed",  # Creates .app bundle on macOS
+        "--onedir",
+        "--noconfirm",
+        "--clean",
+        # Hidden imports for PyQt6 and dependencies
+        "--hidden-import", "PyQt6.QtSvg",
+        "--hidden-import", "PyQt6.QtWidgets",
+        "--hidden-import", "PyQt6.QtCore",
+        "--hidden-import", "PyQt6.QtGui",
+        "--hidden-import", "scipy.signal",
+        "--hidden-import", "scipy.fft",
+        "--hidden-import", "scipy._lib.messagestream",
+        "--hidden-import", "scipy.special._cdflib",
+        "--hidden-import", "librosa",
+        "--hidden-import", "librosa.util",
+        "--hidden-import", "soundfile",
+        "--hidden-import", "cv2",
+        "--hidden-import", "numpy",
+        "--hidden-import", "numpy.core._methods",
+        "--hidden-import", "numpy.lib.format",
+        # Collect all data files
+        "--collect-data", "librosa",
+        "--collect-submodules", "scipy",
+        "--collect-submodules", "librosa",
+        "--collect-submodules", "cv2",
+        # macOS specific
+        "--osx-bundle-identifier", BUNDLE_ID,
+        # Output directory
+        "--distpath", str(DIST_DIR),
+        "--workpath", str(BUILD_DIR),
+        # Main script
+        MAIN_SCRIPT,
+    ]
+
+    if icon:
+        cmd.extend(["--icon", icon])
+
+    # Set environment
+    env = os.environ.copy()
+    env['PYTHONOPTIMIZE'] = '1'
+
+    print("Running PyInstaller (this may take a few minutes)...")
+    result = subprocess.run(cmd, cwd=ROOT_DIR, env=env)
+
+    if result.returncode != 0:
+        print("PyInstaller failed!")
+        sys.exit(1)
+
+    # Post-process: Update Info.plist
+    app_path = DIST_DIR / f"{APP_NAME}.app"
+    if app_path.exists():
+        plist_path = app_path / "Contents" / "Info.plist"
+        if plist_path.exists():
+            with open(plist_path, 'rb') as f:
+                plist = plistlib.load(f)
+
+            plist.update({
                 'CFBundleDisplayName': APP_NAME,
-                'CFBundleIdentifier': BUNDLE_ID,
                 'CFBundleVersion': APP_VERSION,
                 'CFBundleShortVersionString': APP_VERSION,
                 'NSHighResolutionCapable': True,
-                'NSRequiresAquaSystemAppearance': False,  # Support dark mode
+                'NSRequiresAquaSystemAppearance': False,  # Dark mode support
                 'LSMinimumSystemVersion': '10.15',
                 'NSHumanReadableCopyright': f'© 2024 {COMPANY}',
-            },
-            'includes': [
-                'PyQt6.QtWidgets',
-                'PyQt6.QtCore',
-                'PyQt6.QtGui',
-                'PyQt6.QtSvg',
-                'scipy.signal',
-                'scipy.fft',
-                'librosa',
-                'soundfile',
-                'cv2',
-                'numpy',
-            ],
-            'packages': [
-                'neosync',
-                'PyQt6',
-                'scipy',
-                'numpy',
-                'librosa',
-                'cv2',
-            ],
-            'frameworks': [],
-        }
-    }
+            })
 
-    setup_content = f'''
-from setuptools import setup
+            with open(plist_path, 'wb') as f:
+                plistlib.dump(plist, f)
 
-APP = ['{MAIN_SCRIPT}']
-OPTIONS = {options}
-
-setup(
-    name='{APP_NAME}',
-    app=APP,
-    options=OPTIONS,
-    setup_requires=['py2app'],
-)
-'''
-
-    setup_path = ROOT_DIR / 'setup_macos.py'
-    setup_path.write_text(setup_content)
-    return setup_path
-
-
-def build_app():
-    """Build .app bundle with py2app"""
-    print("Building .app bundle with py2app...")
-
-    setup_py = create_setup_py()
-
-    cmd = [
-        sys.executable, str(setup_py),
-        "py2app",
-        "--dist-dir", str(DIST_DIR),
-        "--bdist-base", str(BUILD_DIR),
-    ]
-
-    subprocess.run(cmd, check=True, cwd=ROOT_DIR)
     print("App bundle built successfully!")
+    return app_path
 
 
 def sign_app(app_path: Path, identity: str = None):
@@ -142,16 +151,6 @@ def sign_app(app_path: Path, identity: str = None):
         print("No signing identity found. Using ad-hoc signing.")
         print("For distribution, set CODESIGN_IDENTITY environment variable.")
 
-    cmd = [
-        'codesign',
-        '--force',
-        '--deep',
-        '--sign', identity,
-        '--options', 'runtime',
-        '--entitlements', str(ROOT_DIR / 'entitlements.plist'),
-        str(app_path),
-    ]
-
     # Create entitlements if not exist
     entitlements_path = ROOT_DIR / 'entitlements.plist'
     if not entitlements_path.exists():
@@ -163,11 +162,21 @@ def sign_app(app_path: Path, identity: str = None):
         with open(entitlements_path, 'wb') as f:
             plistlib.dump(entitlements, f)
 
+    cmd = [
+        'codesign',
+        '--force',
+        '--deep',
+        '--sign', identity,
+        '--options', 'runtime',
+        '--entitlements', str(entitlements_path),
+        str(app_path),
+    ]
+
     try:
         subprocess.run(cmd, check=True)
         print("Application signed successfully!")
     except subprocess.CalledProcessError:
-        print("WARNING: Code signing failed. App may be blocked on other Macs.")
+        print("WARNING: Code signing failed. App may still work locally.")
 
 
 def create_dmg(app_path: Path):
@@ -176,35 +185,11 @@ def create_dmg(app_path: Path):
 
     dmg_path = DIST_DIR / f"{APP_NAME}-{APP_VERSION}.dmg"
 
-    # Try using dmgbuild
-    try:
-        import dmgbuild
+    # Remove existing DMG
+    if dmg_path.exists():
+        dmg_path.unlink()
 
-        settings = {
-            'filename': str(dmg_path),
-            'volume_name': APP_NAME,
-            'format': 'UDBZ',
-            'size': None,
-            'files': [str(app_path)],
-            'symlinks': {'Applications': '/Applications'},
-            'icon_locations': {
-                f'{APP_NAME}.app': (140, 120),
-                'Applications': (500, 120),
-            },
-            'background_color': '#1a1a1a',
-            'window_rect': ((200, 120), (640, 400)),
-            'icon_size': 128,
-            'text_size': 14,
-        }
-
-        dmgbuild.build_dmg(str(dmg_path), APP_NAME, settings=settings)
-        print(f"DMG created: {dmg_path}")
-        return dmg_path
-
-    except ImportError:
-        print("dmgbuild not installed, using hdiutil...")
-
-    # Fallback to hdiutil
+    # Use hdiutil (always available on macOS)
     temp_dmg = DIST_DIR / f"{APP_NAME}-temp.dmg"
 
     # Create temporary DMG
@@ -274,21 +259,23 @@ def main():
         sys.exit(1)
 
     clean()
-    build_app()
+    app_path = build_app()
 
-    app_path = DIST_DIR / f"{APP_NAME}.app"
-
-    if app_path.exists():
+    if app_path and app_path.exists():
         sign_app(app_path)
         dmg_path = create_dmg(app_path)
 
         if os.environ.get('NOTARIZE', '').lower() == 'true':
             notarize_dmg(dmg_path)
 
-    print()
-    print("Build complete!")
-    print(f"Application: {app_path}")
-    print(f"DMG: {DIST_DIR}/{APP_NAME}-{APP_VERSION}.dmg")
+        print()
+        print("=" * 50)
+        print("Build complete!")
+        print(f"Application: {app_path}")
+        print(f"DMG: {DIST_DIR}/{APP_NAME}-{APP_VERSION}.dmg")
+    else:
+        print("Build failed - app not created")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
