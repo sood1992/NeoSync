@@ -28,60 +28,65 @@ class StatusDelegate(QStyledItemDelegate):
     }
 
     def paint(self, painter, option, index):
-        """Custom paint for status cell"""
-        # Get clip data - handle None/invalid data during table updates (race condition)
+        """Custom paint for status cell - fully protected against crashes"""
         try:
             clip = index.data(Qt.ItemDataRole.UserRole)
             if not isinstance(clip, ClipInfo):
                 super().paint(painter, option, index)
                 return
-        except (RuntimeError, TypeError):
-            # Handle case where underlying C++ object has been deleted
-            super().paint(painter, option, index)
-            return
 
-        painter.save()
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.save()
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        # Background
-        if option.state & QStyle.StateFlag.State_Selected:
-            painter.fillRect(option.rect, QColor("#8b5cf6"))
-        elif option.state & QStyle.StateFlag.State_MouseOver:
-            painter.fillRect(option.rect, QColor("#252525"))
+            # Background
+            if option.state & QStyle.StateFlag.State_Selected:
+                painter.fillRect(option.rect, QColor("#8b5cf6"))
+            elif option.state & QStyle.StateFlag.State_MouseOver:
+                painter.fillRect(option.rect, QColor("#252525"))
 
-        # Draw badge - safely handle None sync_quality during initial import
-        sync_quality = clip.sync_quality if clip.sync_quality is not None else SyncQuality.FAILED
-        if clip.sync_status == SyncStatus.REFERENCE:
-            text = "REFERENCE"
-        elif clip.sync_status == SyncStatus.PENDING:
-            text = "PENDING"
-        elif clip.sync_status == SyncStatus.ANALYZING:
-            text = "ANALYZING"
-        else:
-            text = sync_quality.name
-        color = "#3b82f6" if clip.is_reference else self.QUALITY_COLORS.get(sync_quality, "#666")
+            # Draw badge - safely handle None sync_quality during initial import
+            sync_quality = clip.sync_quality if clip.sync_quality is not None else SyncQuality.FAILED
+            sync_status = clip.sync_status if clip.sync_status is not None else SyncStatus.PENDING
 
-        badge_rect = QRect(
-            option.rect.x() + 10,
-            option.rect.y() + (option.rect.height() - 24) // 2,
-            80,
-            24
-        )
+            if sync_status == SyncStatus.REFERENCE:
+                text = "REFERENCE"
+            elif sync_status == SyncStatus.PENDING:
+                text = "PENDING"
+            elif sync_status == SyncStatus.ANALYZING:
+                text = "ANALYZING"
+            else:
+                text = sync_quality.name
 
-        # Badge background
-        painter.setBrush(QColor(color + "30"))  # 30% opacity
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawRoundedRect(badge_rect, 12, 12)
+            is_ref = clip.is_reference if hasattr(clip, 'is_reference') else False
+            color = "#3b82f6" if is_ref else self.QUALITY_COLORS.get(sync_quality, "#666")
 
-        # Badge text
-        painter.setPen(QColor(color))
-        font = painter.font()
-        font.setPointSize(9)
-        font.setBold(True)
-        painter.setFont(font)
-        painter.drawText(badge_rect, Qt.AlignmentFlag.AlignCenter, text)
+            badge_rect = QRect(
+                option.rect.x() + 10,
+                option.rect.y() + (option.rect.height() - 24) // 2,
+                80,
+                24
+            )
 
-        painter.restore()
+            # Badge background
+            painter.setBrush(QColor(color + "30"))  # 30% opacity
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.drawRoundedRect(badge_rect, 12, 12)
+
+            # Badge text
+            painter.setPen(QColor(color))
+            font = painter.font()
+            font.setPointSize(9)
+            font.setBold(True)
+            painter.setFont(font)
+            painter.drawText(badge_rect, Qt.AlignmentFlag.AlignCenter, text)
+
+            painter.restore()
+        except Exception:
+            # Fallback to default painting on any error
+            try:
+                super().paint(painter, option, index)
+            except Exception:
+                pass
 
 
 class ConfidenceDelegate(QStyledItemDelegate):
@@ -96,62 +101,63 @@ class ConfidenceDelegate(QStyledItemDelegate):
     }
 
     def paint(self, painter, option, index):
-        """Custom paint for confidence cell"""
-        # Get clip data - handle None/invalid data during table updates (race condition)
+        """Custom paint for confidence cell - fully protected against crashes"""
         try:
             clip = index.data(Qt.ItemDataRole.UserRole)
             if not isinstance(clip, ClipInfo):
                 super().paint(painter, option, index)
                 return
-        except (RuntimeError, TypeError):
-            # Handle case where underlying C++ object has been deleted
-            super().paint(painter, option, index)
-            return
 
-        painter.save()
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.save()
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        # Background on selection
-        if option.state & QStyle.StateFlag.State_Selected:
-            painter.fillRect(option.rect, QColor("#8b5cf6"))
-        elif option.state & QStyle.StateFlag.State_MouseOver:
-            painter.fillRect(option.rect, QColor("#252525"))
+            # Background on selection
+            if option.state & QStyle.StateFlag.State_Selected:
+                painter.fillRect(option.rect, QColor("#8b5cf6"))
+            elif option.state & QStyle.StateFlag.State_MouseOver:
+                painter.fillRect(option.rect, QColor("#252525"))
 
-        # Progress bar background
-        bar_rect = QRect(
-            option.rect.x() + 10,
-            option.rect.y() + (option.rect.height() - 8) // 2,
-            60,
-            8
-        )
-        painter.setBrush(QColor("#333333"))
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawRoundedRect(bar_rect, 4, 4)
+            # Progress bar background
+            bar_rect = QRect(
+                option.rect.x() + 10,
+                option.rect.y() + (option.rect.height() - 8) // 2,
+                60,
+                8
+            )
+            painter.setBrush(QColor("#333333"))
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.drawRoundedRect(bar_rect, 4, 4)
 
-        # Progress bar fill - safely handle None values during initial import
-        sync_quality = clip.sync_quality if clip.sync_quality is not None else SyncQuality.FAILED
-        sync_confidence = clip.sync_confidence if clip.sync_confidence is not None else 0.0
+            # Progress bar fill - safely handle None values during initial import
+            sync_quality = clip.sync_quality if clip.sync_quality is not None else SyncQuality.FAILED
+            sync_confidence = clip.sync_confidence if clip.sync_confidence is not None else 0.0
 
-        color = self.QUALITY_COLORS.get(sync_quality, "#666")
-        fill_width = int(bar_rect.width() * sync_confidence)
-        fill_rect = QRect(bar_rect.x(), bar_rect.y(), fill_width, bar_rect.height())
-        painter.setBrush(QColor(color))
-        painter.drawRoundedRect(fill_rect, 4, 4)
+            color = self.QUALITY_COLORS.get(sync_quality, "#666")
+            fill_width = int(bar_rect.width() * max(0.0, min(1.0, sync_confidence)))
+            fill_rect = QRect(bar_rect.x(), bar_rect.y(), fill_width, bar_rect.height())
+            painter.setBrush(QColor(color))
+            painter.drawRoundedRect(fill_rect, 4, 4)
 
-        # Text
-        text_rect = QRect(
-            bar_rect.right() + 8,
-            option.rect.y(),
-            40,
-            option.rect.height()
-        )
-        painter.setPen(QColor("#ffffff"))
-        font = painter.font()
-        font.setPointSize(11)
-        painter.setFont(font)
-        painter.drawText(text_rect, Qt.AlignmentFlag.AlignVCenter, f"{sync_confidence:.0%}")
+            # Text
+            text_rect = QRect(
+                bar_rect.right() + 8,
+                option.rect.y(),
+                40,
+                option.rect.height()
+            )
+            painter.setPen(QColor("#ffffff"))
+            font = painter.font()
+            font.setPointSize(11)
+            painter.setFont(font)
+            painter.drawText(text_rect, Qt.AlignmentFlag.AlignVCenter, f"{sync_confidence:.0%}")
 
-        painter.restore()
+            painter.restore()
+        except Exception:
+            # Fallback to default painting on any error
+            try:
+                super().paint(painter, option, index)
+            except Exception:
+                pass
 
 
 class ClipTableWidget(QWidget):
