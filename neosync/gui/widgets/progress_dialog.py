@@ -57,12 +57,26 @@ class ProgressDialog(QDialog):
         self.file_label.setWordWrap(True)
         layout.addWidget(self.file_label)
 
-        # Progress bar
+        # Progress bar - with explicit styling for visibility
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
         self.progress_bar.setTextVisible(True)
-        self.progress_bar.setFixedHeight(20)
+        self.progress_bar.setFixedHeight(24)
+        self.progress_bar.setStyleSheet("""
+            QProgressBar {
+                background-color: #1e1e1e;
+                border: 1px solid #333;
+                border-radius: 4px;
+                text-align: center;
+                color: #fff;
+                font-size: 12px;
+            }
+            QProgressBar::chunk {
+                background-color: #8b5cf6;
+                border-radius: 3px;
+            }
+        """)
         layout.addWidget(self.progress_bar)
 
         # Bottom row
