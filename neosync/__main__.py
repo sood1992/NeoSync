@@ -19,7 +19,6 @@ def main():
     print("[DEBUG] Importing PyQt6...")
     from PyQt6.QtWidgets import QApplication
     from PyQt6.QtCore import Qt
-    from PyQt6.QtGui import QFont
     print("[DEBUG] PyQt6 imported OK")
 
     print("[DEBUG] Importing MainWindow...")
@@ -30,11 +29,7 @@ def main():
     from neosync.gui.theme import apply_theme, ThemeMode
     print("[DEBUG] Theme imported OK")
 
-    # High DPI support
-    print("[DEBUG] Setting up HiDPI...")
-    QApplication.setHighDpiScaleFactorRoundingPolicy(
-        Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
-    )
+    # Skip HiDPI setup - may cause issues on some macOS versions
 
     # Create application
     print("[DEBUG] Creating QApplication...")
@@ -44,12 +39,44 @@ def main():
     app.setOrganizationDomain("neofox.com")
     print("[DEBUG] QApplication created OK")
 
-    # Don't set custom font - let system use its default
-
-    # Apply dark theme
-    print("[DEBUG] Applying theme...")
-    apply_theme(app, ThemeMode.DARK)
-    print("[DEBUG] Theme applied OK")
+    # Apply minimal dark theme stylesheet (skip complex theme)
+    print("[DEBUG] Applying minimal theme...")
+    app.setStyleSheet("""
+        QMainWindow, QWidget {
+            background-color: #0a0a0a;
+            color: #ffffff;
+        }
+        QLabel { color: #ffffff; }
+        QPushButton {
+            background-color: #1e1e1e;
+            color: #ffffff;
+            border: 1px solid #333;
+            border-radius: 6px;
+            padding: 8px 16px;
+        }
+        QPushButton:hover { background-color: #2a2a2a; }
+        QTableWidget {
+            background-color: #141414;
+            color: #ffffff;
+            border: 1px solid #333;
+        }
+        QHeaderView::section {
+            background-color: #1e1e1e;
+            color: #888;
+            border: none;
+            padding: 8px;
+        }
+        QScrollBar:vertical {
+            background-color: #0a0a0a;
+            width: 10px;
+        }
+        QScrollBar::handle:vertical {
+            background-color: #333;
+            border-radius: 5px;
+        }
+        QSplitter::handle { background-color: #1e1e1e; }
+    """)
+    print("[DEBUG] Minimal theme applied OK")
 
     # Create and show main window
     print("[DEBUG] Creating MainWindow...")
