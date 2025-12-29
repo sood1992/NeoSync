@@ -248,8 +248,11 @@ class TimelineCanvas(QWidget):
     def paintEvent(self, event):
         """Paint the timeline - with crash protection"""
         try:
+            print("[DEBUG] TimelineCanvas.paintEvent starting...")
             painter = QPainter(self)
+            print("[DEBUG] TimelineCanvas.paintEvent QPainter created")
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            print("[DEBUG] TimelineCanvas.paintEvent antialiasing set")
 
             # Background
             painter.fillRect(self.rect(), QColor("#0d0d0d"))

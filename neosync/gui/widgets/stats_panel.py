@@ -88,8 +88,11 @@ class QualityBar(QWidget):
     def paintEvent(self, event):
         """Paint the quality bar - with crash protection"""
         try:
+            print("[DEBUG] QualityBar.paintEvent starting...")
             painter = QPainter(self)
+            print("[DEBUG] QualityBar.paintEvent QPainter created")
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            print("[DEBUG] QualityBar.paintEvent antialiasing set")
 
             total = sum(self._counts.values()) if self._counts else 0
 

@@ -251,8 +251,11 @@ class WaveformCanvas(QWidget):
     def paintEvent(self, event):
         """Paint the waveforms - with crash protection"""
         try:
+            print("[DEBUG] WaveformCanvas.paintEvent starting...")
             painter = QPainter(self)
+            print("[DEBUG] WaveformCanvas.paintEvent QPainter created")
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            print("[DEBUG] WaveformCanvas.paintEvent antialiasing set")
 
             # Background
             painter.fillRect(self.rect(), QColor("#0d0d0d"))

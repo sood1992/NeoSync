@@ -193,10 +193,14 @@ class DropZone(QWidget):
     def paintEvent(self, event):
         """Custom paint for drop zone - with crash protection"""
         try:
+            print("[DEBUG] DropZone.paintEvent starting...")
             super().paintEvent(event)
+            print("[DEBUG] DropZone.paintEvent super() done")
 
             painter = QPainter(self)
+            print("[DEBUG] DropZone.paintEvent QPainter created")
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            print("[DEBUG] DropZone.paintEvent antialiasing set")
 
             rect = self.rect().adjusted(20, 20, -20, -20)
 
