@@ -326,7 +326,6 @@ class SettingsDialog(QDialog):
                 background-color: #333;
                 padding: 4px 8px;
                 border-radius: 4px;
-                font-family: monospace;
             """)
             row.addWidget(shortcut_label)
 

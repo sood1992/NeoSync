@@ -83,7 +83,7 @@ class WaveformView(QWidget):
         footer.setContentsMargins(12, 8, 12, 10)
 
         self.offset_label = QLabel("Offset: 0.000s")
-        self.offset_label.setStyleSheet("color: #555; font-size: 11px; font-family: monospace;")
+        self.offset_label.setStyleSheet("color: #555; font-size: 11px;")
         footer.addWidget(self.offset_label)
 
         footer.addStretch()
