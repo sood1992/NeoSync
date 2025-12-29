@@ -244,11 +244,10 @@ class ClipTableWidget(QWidget):
     def _update_row(self, row: int, clip: ClipInfo):
         """Update a single row with defensive null checks"""
         try:
-            # File name
+            # File name - use white text for visibility
             name_item = QTableWidgetItem(clip.file_name or "Unknown")
             name_item.setData(Qt.ItemDataRole.UserRole, clip)
-            color_code = clip.color_code if clip.color_code else "#808080"
-            name_item.setForeground(QColor(color_code))
+            name_item.setForeground(QColor("#ffffff"))  # White for visibility
             self.table.setItem(row, 0, name_item)
 
             # Duration - safely handle None/0
@@ -260,13 +259,15 @@ class ClipTableWidget(QWidget):
             camera = clip.camera_id or "Unknown"
             self.table.setItem(row, 2, QTableWidgetItem(camera))
 
-            # Status (custom delegate)
-            status_item = QTableWidgetItem()
+            # Status - show text since delegates are disabled
+            sync_status = clip.sync_status.name if clip.sync_status else "PENDING"
+            status_item = QTableWidgetItem(sync_status)
             status_item.setData(Qt.ItemDataRole.UserRole, clip)
             self.table.setItem(row, 3, status_item)
 
-            # Confidence (custom delegate)
-            conf_item = QTableWidgetItem()
+            # Confidence - show percentage since delegates are disabled
+            sync_confidence = clip.sync_confidence if clip.sync_confidence is not None else 0.0
+            conf_item = QTableWidgetItem(f"{sync_confidence:.0%}")
             conf_item.setData(Qt.ItemDataRole.UserRole, clip)
             self.table.setItem(row, 4, conf_item)
 
