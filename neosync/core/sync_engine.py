@@ -464,7 +464,14 @@ class SyncEngine:
         max_offset_seconds: float,
         use_drift_correction: bool
     ) -> Optional[SyncResult]:
-        """Sync a single clip to reference using audio"""
+        """
+        Sync a single clip to reference using tiered audio approach
+
+        Priority order (fast → accurate):
+        1. Multi-scale sync (fastest, good for most cases)
+        2. Standard GCC-PHAT (if multi-scale confidence is low)
+        3. Ensemble sync (slowest, but most accurate for difficult cases)
+        """
         if not clip.has_audio or not reference.has_audio:
             return None
 
@@ -476,7 +483,7 @@ class SyncEngine:
             clip_audio, _ = self.audio_analyzer.load_audio(clip.file_path)
             ref_audio, _ = self.audio_analyzer.load_audio(reference.file_path)
 
-            # Coarse matching with fingerprints
+            # Quick fingerprint check first (instant)
             fp1 = clip.audio_fingerprint.fingerprint
             fp2 = reference.audio_fingerprint.fingerprint
             fp_similarity = np.dot(fp1, fp2) / (np.linalg.norm(fp1) * np.linalg.norm(fp2) + 1e-10)
@@ -485,26 +492,67 @@ class SyncEngine:
                 # Fingerprints too different, likely different audio
                 return None
 
-            # Fine alignment with GCC-PHAT
             max_delay_samples = int(max_offset_seconds * self.sample_rate)
-            delay, confidence, correlation = self.audio_analyzer.gcc_phat(
-                clip_audio, ref_audio, max_delay=max_delay_samples
-            )
 
-            if confidence < 0.1:
+            # ===== TIER 1: Multi-scale sync (fastest) =====
+            # Only use for longer clips where multi-scale helps
+            delay = None
+            confidence = 0.0
+            correlation = None
+
+            if len(clip_audio) > self.sample_rate * 30:  # >30 seconds
+                try:
+                    delay, confidence = self.audio_analyzer.multi_scale_sync(
+                        clip_audio, ref_audio, self.sample_rate
+                    )
+                    # Multi-scale doesn't return correlation, get it for sub-sample
+                    if confidence > 0.6:  # Good enough, use this result
+                        _, _, correlation = self.audio_analyzer.gcc_phat(
+                            clip_audio, ref_audio, max_delay=max_delay_samples
+                        )
+                except:
+                    pass
+
+            # ===== TIER 2: Standard GCC-PHAT (fast, reliable) =====
+            if confidence < 0.6:
+                delay, confidence, correlation = self.audio_analyzer.gcc_phat(
+                    clip_audio, ref_audio, max_delay=max_delay_samples
+                )
+
+            # ===== TIER 3: Ensemble sync (slow, for difficult cases) =====
+            if confidence < 0.4 and len(clip_audio) < self.sample_rate * 300:  # <5 min
+                try:
+                    delay, confidence, metrics = self.audio_analyzer.ensemble_sync(
+                        clip_audio, ref_audio, self.sample_rate,
+                        max_offset_seconds=min(max_offset_seconds, 120)
+                    )
+                    # Get correlation for sub-sample refinement
+                    _, _, correlation = self.audio_analyzer.gcc_phat(
+                        clip_audio, ref_audio, max_delay=max_delay_samples
+                    )
+                except:
+                    pass
+
+            if confidence < 0.1 or delay is None:
                 return None
 
             # Sub-sample refinement
-            center = len(correlation) // 2
-            peak_idx = center + delay
-            sub_sample = self.audio_analyzer.subsample_refinement(correlation, peak_idx)
+            sub_sample = 0.0
+            if correlation is not None:
+                center = len(correlation) // 2
+                peak_idx = center + delay
+                if 0 <= peak_idx < len(correlation):
+                    sub_sample = self.audio_analyzer.subsample_refinement(correlation, peak_idx)
 
-            # Drift detection
+            # Drift detection (only for longer clips)
             drift_rate = 0.0
-            if use_drift_correction and len(clip_audio) > self.sample_rate * 10:
-                drift_rate, _ = self.audio_analyzer.detect_drift(
-                    clip_audio, ref_audio, self.sample_rate
-                )
+            if use_drift_correction and len(clip_audio) > self.sample_rate * 30:
+                try:
+                    drift_rate, _ = self.audio_analyzer.detect_drift(
+                        clip_audio, ref_audio, self.sample_rate
+                    )
+                except:
+                    pass
 
             return SyncResult(
                 source_file=clip.file_path,

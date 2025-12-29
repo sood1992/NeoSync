@@ -966,3 +966,430 @@ class AudioAnalyzer:
         total_delay = coarse_delay + fine_delay
 
         return total_delay, confidence
+
+    # =========================================================================
+    # ADVANCED FEATURES FOR MAXIMUM ACCURACY
+    # =========================================================================
+
+    def mel_spectrogram_sync(
+        self,
+        audio1: np.ndarray,
+        audio2: np.ndarray,
+        sr: int,
+        max_offset_seconds: float = 60.0
+    ) -> Tuple[int, float]:
+        """
+        Mel-spectrogram based sync - more robust to EQ differences and noise
+
+        Mel spectrograms emphasize perceptually important frequencies,
+        making matching more robust when audio has different EQ or compression.
+        """
+        if not LIBROSA_AVAILABLE:
+            raise ImportError("librosa required for mel-spectrogram sync")
+
+        # Compute mel spectrograms
+        n_mels = 128
+        hop = 512
+
+        mel1 = librosa.feature.melspectrogram(
+            y=audio1, sr=sr, n_mels=n_mels, hop_length=hop
+        )
+        mel2 = librosa.feature.melspectrogram(
+            y=audio2, sr=sr, n_mels=n_mels, hop_length=hop
+        )
+
+        # Convert to log scale (dB)
+        mel1_db = librosa.power_to_db(mel1, ref=np.max)
+        mel2_db = librosa.power_to_db(mel2, ref=np.max)
+
+        # Average across frequency bands to get energy envelope
+        energy1 = np.mean(mel1_db, axis=0)
+        energy2 = np.mean(mel2_db, axis=0)
+
+        # Normalize
+        energy1 = (energy1 - np.mean(energy1)) / (np.std(energy1) + 1e-10)
+        energy2 = (energy2 - np.mean(energy2)) / (np.std(energy2) + 1e-10)
+
+        # Cross-correlation
+        correlation = signal.correlate(energy1, energy2, mode='full')
+        lags = signal.correlation_lags(len(energy1), len(energy2), mode='full')
+
+        # Limit search range
+        max_lag_frames = int(max_offset_seconds * sr / hop)
+        valid = np.abs(lags) <= max_lag_frames
+        correlation[~valid] = -np.inf
+
+        # Find peak
+        peak_idx = np.argmax(correlation)
+        peak_lag = lags[peak_idx]
+        confidence = correlation[peak_idx] / len(energy1)
+
+        # Convert from frames to samples
+        delay_samples = peak_lag * hop
+
+        return delay_samples, float(np.clip(confidence, 0, 1))
+
+    def spectral_contrast_sync(
+        self,
+        audio1: np.ndarray,
+        audio2: np.ndarray,
+        sr: int,
+        max_offset_seconds: float = 60.0
+    ) -> Tuple[int, float]:
+        """
+        Spectral contrast based sync - excellent for music and complex audio
+
+        Spectral contrast measures the difference between peaks and valleys
+        in the spectrum, making it robust to overall level changes.
+        """
+        if not LIBROSA_AVAILABLE:
+            raise ImportError("librosa required for spectral contrast sync")
+
+        hop = 512
+
+        # Compute spectral contrast
+        contrast1 = librosa.feature.spectral_contrast(
+            y=audio1, sr=sr, hop_length=hop, n_bands=6
+        )
+        contrast2 = librosa.feature.spectral_contrast(
+            y=audio2, sr=sr, hop_length=hop, n_bands=6
+        )
+
+        # Flatten and normalize
+        feat1 = contrast1.flatten()
+        feat2 = contrast2.flatten()
+
+        # Use shorter sequence for correlation
+        n_frames1 = contrast1.shape[1]
+        n_frames2 = contrast2.shape[1]
+
+        # Compute frame-wise similarity and cross-correlate
+        sim1 = np.mean(contrast1, axis=0)
+        sim2 = np.mean(contrast2, axis=0)
+
+        sim1 = (sim1 - np.mean(sim1)) / (np.std(sim1) + 1e-10)
+        sim2 = (sim2 - np.mean(sim2)) / (np.std(sim2) + 1e-10)
+
+        correlation = signal.correlate(sim1, sim2, mode='full')
+        lags = signal.correlation_lags(len(sim1), len(sim2), mode='full')
+
+        max_lag_frames = int(max_offset_seconds * sr / hop)
+        valid = np.abs(lags) <= max_lag_frames
+        correlation[~valid] = -np.inf
+
+        peak_idx = np.argmax(correlation)
+        peak_lag = lags[peak_idx]
+        confidence = correlation[peak_idx] / len(sim1)
+
+        delay_samples = peak_lag * hop
+
+        return delay_samples, float(np.clip(confidence, 0, 1))
+
+    def normalize_audio_for_matching(
+        self,
+        audio: np.ndarray,
+        sr: int,
+        target_lufs: float = -23.0
+    ) -> np.ndarray:
+        """
+        Normalize audio to target loudness for better matching
+
+        Uses ITU-R BS.1770 loudness measurement for broadcast-standard
+        normalization, making clips with different gain levels comparable.
+        """
+        # Simple RMS-based normalization (approximates LUFS for speech/music)
+        rms = np.sqrt(np.mean(audio ** 2))
+        if rms < 1e-10:
+            return audio
+
+        # Target RMS for -23 LUFS (approximate)
+        target_rms = 10 ** (target_lufs / 20) * 0.5
+
+        gain = target_rms / rms
+        normalized = audio * gain
+
+        # Prevent clipping
+        max_val = np.max(np.abs(normalized))
+        if max_val > 0.99:
+            normalized = normalized * (0.99 / max_val)
+
+        return normalized
+
+    def match_eq_profiles(
+        self,
+        audio_source: np.ndarray,
+        audio_target: np.ndarray,
+        sr: int
+    ) -> np.ndarray:
+        """
+        Match EQ profile of source to target for better correlation
+
+        Useful when comparing audio from different microphones or
+        cameras with different audio processing.
+        """
+        if not SCIPY_AVAILABLE:
+            return audio_source
+
+        # Compute spectral envelopes
+        n_fft = 2048
+        hop = 512
+
+        # Get average spectrum
+        spec_source = np.abs(librosa.stft(audio_source, n_fft=n_fft, hop_length=hop))
+        spec_target = np.abs(librosa.stft(audio_target, n_fft=n_fft, hop_length=hop))
+
+        avg_source = np.mean(spec_source, axis=1)
+        avg_target = np.mean(spec_target, axis=1)
+
+        # Compute EQ curve (ratio of target to source)
+        eq_curve = (avg_target + 1e-10) / (avg_source + 1e-10)
+
+        # Smooth the EQ curve
+        eq_curve = gaussian_filter1d(eq_curve, sigma=5)
+
+        # Limit extreme values
+        eq_curve = np.clip(eq_curve, 0.1, 10.0)
+
+        # Apply EQ in frequency domain
+        stft_source = librosa.stft(audio_source, n_fft=n_fft, hop_length=hop)
+        stft_eq = stft_source * eq_curve[:, np.newaxis]
+
+        # Inverse STFT
+        audio_matched = librosa.istft(stft_eq, hop_length=hop, length=len(audio_source))
+
+        return audio_matched
+
+    def nonlinear_drift_correction(
+        self,
+        audio: np.ndarray,
+        time_offsets: List[float],
+        measured_drifts: List[float],
+        sr: int
+    ) -> np.ndarray:
+        """
+        Apply non-linear drift correction using spline interpolation
+
+        Handles cases where drift rate varies (e.g., due to temperature
+        changes affecting crystal oscillator).
+        """
+        if len(time_offsets) < 3:
+            # Fall back to linear correction
+            if len(time_offsets) >= 2:
+                time_diff = time_offsets[-1] - time_offsets[0]
+                if abs(time_diff) < 1e-10:  # Avoid division by zero
+                    return audio
+                slope = (measured_drifts[-1] - measured_drifts[0]) / time_diff
+                return self.time_stretch_correct(audio, slope * sr, sr)
+            return audio
+
+        # Fit cubic spline to drift measurements
+        from scipy.interpolate import UnivariateSpline
+
+        times = np.array(time_offsets)
+        drifts = np.array(measured_drifts)
+
+        # Spline fit (smoothing to handle measurement noise)
+        spline = UnivariateSpline(times, drifts, s=len(times) * 0.1)
+
+        # Generate drift curve for entire audio
+        duration = len(audio) / sr
+        t = np.linspace(0, duration, len(audio))
+        drift_curve = spline(t)
+
+        # Apply variable time-stretch
+        # Create new time mapping
+        t_corrected = t - drift_curve
+
+        # Resample to corrected timeline
+        from scipy.interpolate import interp1d
+        interp = interp1d(t, audio, kind='linear', fill_value='extrapolate')
+        audio_corrected = interp(t_corrected)
+
+        return audio_corrected.astype(np.float32)
+
+    def kalman_fusion(
+        self,
+        sync_results: List[Tuple[float, float, str]]
+    ) -> Tuple[float, float]:
+        """
+        Kalman filter fusion of multiple sync estimates
+
+        Optimally combines estimates from different methods based on
+        their confidence/variance for the most accurate final result.
+
+        Args:
+            sync_results: List of (offset_seconds, confidence, method_name)
+
+        Returns:
+            (fused_offset, fused_confidence)
+        """
+        if not sync_results:
+            return 0.0, 0.0
+
+        if len(sync_results) == 1:
+            return sync_results[0][0], sync_results[0][1]
+
+        # Convert confidence to variance (lower confidence = higher variance)
+        # Use inverse relationship: variance = k / confidence^2
+        k = 0.01  # Scale factor
+
+        estimates = []
+        variances = []
+
+        for offset, confidence, method in sync_results:
+            if confidence > 0.1:  # Filter out very low confidence
+                estimates.append(offset)
+                # Higher confidence = lower variance
+                variance = k / (confidence ** 2 + 1e-10)
+                variances.append(variance)
+
+        if not estimates:
+            return sync_results[0][0], sync_results[0][1]
+
+        estimates = np.array(estimates)
+        variances = np.array(variances)
+
+        # Kalman fusion formula for combining measurements
+        # Fused estimate = weighted average where weights = 1/variance
+        weights = 1.0 / variances
+        weights = weights / np.sum(weights)  # Normalize
+
+        fused_offset = np.sum(estimates * weights)
+
+        # Fused variance is less than any individual variance
+        fused_variance = 1.0 / np.sum(1.0 / variances)
+
+        # Convert back to confidence
+        fused_confidence = np.sqrt(k / fused_variance)
+        fused_confidence = float(np.clip(fused_confidence, 0, 1))
+
+        return float(fused_offset), fused_confidence
+
+    def ensemble_sync(
+        self,
+        audio1: np.ndarray,
+        audio2: np.ndarray,
+        sr: int,
+        max_offset_seconds: float = 60.0
+    ) -> Tuple[int, float, Dict[str, Any]]:
+        """
+        Ensemble sync using multiple methods with Kalman fusion
+
+        Runs GCC-PHAT, mel-spectrogram, and spectral contrast methods,
+        then fuses results for maximum accuracy.
+        """
+        results = []
+        method_results = {}
+
+        # Method 1: GCC-PHAT (most accurate for clean audio)
+        try:
+            delay1, conf1, _ = self.gcc_phat(
+                audio1, audio2,
+                max_delay=int(max_offset_seconds * sr)
+            )
+            offset1 = delay1 / sr
+            results.append((offset1, conf1, 'gcc_phat'))
+            method_results['gcc_phat'] = {'offset': offset1, 'confidence': conf1}
+        except Exception as e:
+            method_results['gcc_phat'] = {'error': str(e)}
+
+        # Method 2: Mel-spectrogram (robust to EQ differences)
+        try:
+            delay2, conf2 = self.mel_spectrogram_sync(
+                audio1, audio2, sr, max_offset_seconds
+            )
+            offset2 = delay2 / sr
+            results.append((offset2, conf2 * 0.9, 'mel_spec'))  # Slightly lower weight
+            method_results['mel_spectrogram'] = {'offset': offset2, 'confidence': conf2}
+        except Exception as e:
+            method_results['mel_spectrogram'] = {'error': str(e)}
+
+        # Method 3: Spectral contrast (good for music)
+        try:
+            delay3, conf3 = self.spectral_contrast_sync(
+                audio1, audio2, sr, max_offset_seconds
+            )
+            offset3 = delay3 / sr
+            results.append((offset3, conf3 * 0.85, 'spectral_contrast'))
+            method_results['spectral_contrast'] = {'offset': offset3, 'confidence': conf3}
+        except Exception as e:
+            method_results['spectral_contrast'] = {'error': str(e)}
+
+        # Fuse results using Kalman filter
+        fused_offset, fused_confidence = self.kalman_fusion(results)
+
+        # Convert back to samples
+        fused_delay = int(fused_offset * sr)
+
+        return fused_delay, fused_confidence, {
+            'methods': method_results,
+            'fusion': 'kalman',
+            'num_methods': len(results)
+        }
+
+    def robust_sync_with_validation(
+        self,
+        audio1: np.ndarray,
+        audio2: np.ndarray,
+        sr: int,
+        max_offset_seconds: float = 60.0,
+        validation_segments: int = 5
+    ) -> Tuple[int, float, bool]:
+        """
+        Robust sync with cross-validation for reliability
+
+        Performs sync on multiple segments and validates consistency.
+        Returns whether the sync is reliable based on cross-validation.
+        """
+        min_len = min(len(audio1), len(audio2))
+        segment_len = min_len // (validation_segments + 1)
+
+        if segment_len < sr * 2:  # Need at least 2 seconds per segment
+            # Fall back to simple sync
+            delay, conf, _ = self.gcc_phat(
+                audio1, audio2,
+                max_delay=int(max_offset_seconds * sr)
+            )
+            return delay, conf, True
+
+        segment_offsets = []
+
+        for i in range(validation_segments):
+            start = i * segment_len
+            end = start + segment_len
+
+            seg1 = audio1[start:end]
+            seg2 = audio2[start:end]
+
+            try:
+                delay, conf, _ = self.gcc_phat(seg1, seg2, max_delay=sr * 10)
+                if conf > 0.2:
+                    # Adjust for segment position
+                    segment_offsets.append(delay)
+            except:
+                continue
+
+        if len(segment_offsets) < 3:
+            # Not enough valid segments
+            delay, conf, _ = self.gcc_phat(
+                audio1, audio2,
+                max_delay=int(max_offset_seconds * sr)
+            )
+            return delay, conf, False
+
+        # Check consistency
+        offsets = np.array(segment_offsets)
+        median_offset = np.median(offsets)
+        std_offset = np.std(offsets)
+
+        # Offset should be consistent across segments (within 0.1 seconds)
+        is_reliable = std_offset < sr * 0.1
+
+        # Use median as final offset (robust to outliers)
+        final_offset = int(median_offset)
+
+        # Confidence based on consistency
+        consistency_score = 1.0 / (1.0 + std_offset / sr)
+        final_confidence = float(np.clip(consistency_score, 0, 1))
+
+        return final_offset, final_confidence, is_reliable

@@ -541,3 +541,353 @@ class VisualAnalyzer:
         """Clear the fingerprint cache"""
         with self._cache_lock:
             self._fingerprint_cache.clear()
+
+    # =========================================================================
+    # ADVANCED VISUAL SYNC METHODS
+    # =========================================================================
+
+    def detect_faces_timeline(
+        self,
+        file_path: str,
+        sample_interval: int = 5
+    ) -> List[Dict]:
+        """
+        Detect faces throughout video and create timeline
+
+        Useful for multi-camera sync when same person appears
+        in multiple camera angles.
+        """
+        if not CV2_AVAILABLE:
+            return []
+
+        # Load face cascade
+        try:
+            face_cascade = cv2.CascadeClassifier(
+                cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+            )
+        except:
+            return []
+
+        cap = cv2.VideoCapture(file_path)
+        if not cap.isOpened():
+            return []
+
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+        face_timeline = []
+
+        for frame_idx in range(0, frame_count, sample_interval):
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+            ret, frame = cap.read()
+
+            if not ret:
+                break
+
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            faces = face_cascade.detectMultiScale(
+                gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30)
+            )
+
+            if len(faces) > 0:
+                face_timeline.append({
+                    'frame': frame_idx,
+                    'time': frame_idx / fps,
+                    'count': len(faces),
+                    'faces': [{'x': int(x), 'y': int(y), 'w': int(w), 'h': int(h)}
+                              for (x, y, w, h) in faces]
+                })
+
+        cap.release()
+        return face_timeline
+
+    def match_by_face_appearances(
+        self,
+        fp1: VisualFingerprint,
+        fp2: VisualFingerprint,
+        max_offset_seconds: float = 60.0
+    ) -> Optional[VisualSyncResult]:
+        """
+        Match videos by when faces appear/disappear
+
+        Useful for interviews, presentations, or any multi-cam
+        shoot with consistent subjects.
+        """
+        faces1 = self.detect_faces_timeline(fp1.file_path)
+        faces2 = self.detect_faces_timeline(fp2.file_path)
+
+        if len(faces1) < 5 or len(faces2) < 5:
+            return None
+
+        # Create face count curves
+        times1 = np.array([f['time'] for f in faces1])
+        counts1 = np.array([f['count'] for f in faces1])
+        times2 = np.array([f['time'] for f in faces2])
+        counts2 = np.array([f['count'] for f in faces2])
+
+        # Interpolate to common timeline
+        max_time = min(times1[-1], times2[-1])
+        if max_time < 1.0:  # Need at least 1 second
+            return None
+        num_samples = max(10, int(max_time * 2))  # At least 10 samples
+        common_times = np.linspace(0, max_time, num_samples)  # 2 samples/sec
+
+        interp1 = np.interp(common_times, times1, counts1)
+        interp2 = np.interp(common_times, times2, counts2)
+
+        # Normalize
+        interp1 = (interp1 - np.mean(interp1)) / (np.std(interp1) + 1e-10)
+        interp2 = (interp2 - np.mean(interp2)) / (np.std(interp2) + 1e-10)
+
+        # Cross-correlate
+        correlation = signal.correlate(interp1, interp2, mode='full')
+        lags = signal.correlation_lags(len(interp1), len(interp2), mode='full')
+
+        # Convert lags to seconds
+        sample_rate = 2.0  # samples per second
+        max_lag = int(max_offset_seconds * sample_rate)
+        valid = np.abs(lags) <= max_lag
+        correlation[~valid] = -np.inf
+
+        peak_idx = np.argmax(correlation)
+        peak_lag = lags[peak_idx]
+        confidence = correlation[peak_idx] / len(interp1)
+
+        offset_seconds = peak_lag / sample_rate
+        offset_frames = int(offset_seconds * fp1.fps)
+
+        return VisualSyncResult(
+            source_file=fp1.file_path,
+            target_file=fp2.file_path,
+            offset_frames=offset_frames,
+            offset_seconds=offset_seconds,
+            confidence=float(np.clip(confidence, 0, 1)),
+            method="face_appearance_matching"
+        )
+
+    def optical_flow_sync(
+        self,
+        fp1: VisualFingerprint,
+        fp2: VisualFingerprint,
+        max_offset_seconds: float = 60.0
+    ) -> Optional[VisualSyncResult]:
+        """
+        Match videos using optical flow patterns
+
+        Useful when cameras are recording the same action
+        from different angles (sports, action scenes).
+        """
+        if not CV2_AVAILABLE:
+            return None
+
+        def compute_flow_magnitude(file_path: str, sample_interval: int = 3):
+            cap = cv2.VideoCapture(file_path)
+            if not cap.isOpened():
+                return None, 0
+
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+            flow_mags = []
+            prev_gray = None
+
+            for frame_idx in range(0, frame_count, sample_interval):
+                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+                ret, frame = cap.read()
+
+                if not ret:
+                    break
+
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                gray = cv2.resize(gray, (160, 90))
+
+                if prev_gray is not None:
+                    # Compute optical flow
+                    flow = cv2.calcOpticalFlowFarneback(
+                        prev_gray, gray, None,
+                        pyr_scale=0.5, levels=3, winsize=15,
+                        iterations=3, poly_n=5, poly_sigma=1.2, flags=0
+                    )
+
+                    # Compute magnitude
+                    mag = np.sqrt(flow[..., 0]**2 + flow[..., 1]**2)
+                    flow_mags.append(np.mean(mag))
+
+                prev_gray = gray
+
+            cap.release()
+            return np.array(flow_mags), fps
+
+        flow1, fps1 = compute_flow_magnitude(fp1.file_path)
+        flow2, fps2 = compute_flow_magnitude(fp2.file_path)
+
+        if flow1 is None or flow2 is None or len(flow1) < 50 or len(flow2) < 50:
+            return None
+
+        # Normalize
+        flow1 = (flow1 - np.mean(flow1)) / (np.std(flow1) + 1e-10)
+        flow2 = (flow2 - np.mean(flow2)) / (np.std(flow2) + 1e-10)
+
+        # Cross-correlate
+        correlation = signal.correlate(flow1, flow2, mode='full')
+        lags = signal.correlation_lags(len(flow1), len(flow2), mode='full')
+
+        sample_rate = fps1 / 3  # Due to sample_interval=3
+        max_lag = int(max_offset_seconds * sample_rate)
+        valid = np.abs(lags) <= max_lag
+        correlation[~valid] = -np.inf
+
+        peak_idx = np.argmax(correlation)
+        peak_lag = lags[peak_idx]
+        confidence = correlation[peak_idx] / len(flow1)
+
+        offset_seconds = peak_lag / sample_rate * 3  # Multiply back by sample_interval
+        offset_frames = int(offset_seconds * fp1.fps)
+
+        return VisualSyncResult(
+            source_file=fp1.file_path,
+            target_file=fp2.file_path,
+            offset_frames=offset_frames,
+            offset_seconds=offset_seconds,
+            confidence=float(np.clip(confidence, 0, 1)),
+            method="optical_flow_matching"
+        )
+
+    def color_histogram_sync(
+        self,
+        fp1: VisualFingerprint,
+        fp2: VisualFingerprint,
+        max_offset_seconds: float = 60.0
+    ) -> Optional[VisualSyncResult]:
+        """
+        Match videos by color histogram evolution
+
+        Useful when cameras capture similar color changes
+        (lighting changes, colored objects moving, etc.)
+        """
+        if not CV2_AVAILABLE:
+            return None
+
+        def compute_color_timeline(file_path: str, sample_interval: int = 5):
+            cap = cv2.VideoCapture(file_path)
+            if not cap.isOpened():
+                return None, 0
+
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+            color_features = []
+
+            for frame_idx in range(0, frame_count, sample_interval):
+                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+                ret, frame = cap.read()
+
+                if not ret:
+                    break
+
+                # Compute color histogram in HSV
+                hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+                hist = cv2.calcHist([hsv], [0, 1], None, [12, 8], [0, 180, 0, 256])
+                hist = cv2.normalize(hist, hist).flatten()
+                color_features.append(hist)
+
+            cap.release()
+            return np.array(color_features), fps
+
+        colors1, fps1 = compute_color_timeline(fp1.file_path)
+        colors2, fps2 = compute_color_timeline(fp2.file_path)
+
+        if colors1 is None or colors2 is None or len(colors1) < 20 or len(colors2) < 20:
+            return None
+
+        # Compute similarity over time (average histogram per frame)
+        sim1 = np.mean(colors1, axis=1)
+        sim2 = np.mean(colors2, axis=1)
+
+        # Normalize
+        sim1 = (sim1 - np.mean(sim1)) / (np.std(sim1) + 1e-10)
+        sim2 = (sim2 - np.mean(sim2)) / (np.std(sim2) + 1e-10)
+
+        # Cross-correlate
+        correlation = signal.correlate(sim1, sim2, mode='full')
+        lags = signal.correlation_lags(len(sim1), len(sim2), mode='full')
+
+        sample_rate = fps1 / 5  # Due to sample_interval=5
+        max_lag = int(max_offset_seconds * sample_rate)
+        valid = np.abs(lags) <= max_lag
+        correlation[~valid] = -np.inf
+
+        peak_idx = np.argmax(correlation)
+        peak_lag = lags[peak_idx]
+        confidence = correlation[peak_idx] / len(sim1)
+
+        offset_seconds = peak_lag / sample_rate * 5
+        offset_frames = int(offset_seconds * fp1.fps)
+
+        return VisualSyncResult(
+            source_file=fp1.file_path,
+            target_file=fp2.file_path,
+            offset_frames=offset_frames,
+            offset_seconds=offset_seconds,
+            confidence=float(np.clip(confidence, 0, 1)),
+            method="color_histogram_matching"
+        )
+
+    def ensemble_visual_sync(
+        self,
+        fp1: VisualFingerprint,
+        fp2: VisualFingerprint,
+        max_offset_seconds: float = 60.0
+    ) -> Optional[VisualSyncResult]:
+        """
+        Ensemble visual sync using multiple methods
+
+        Combines flash, motion, scene, brightness, optical flow,
+        and color histogram methods for maximum accuracy.
+        """
+        results = []
+
+        # Try all visual methods
+        methods = [
+            ('flash', self.match_by_flash),
+            ('motion', self.match_by_motion),
+            ('scene', self.match_by_scene_changes),
+            ('brightness', self.match_by_brightness),
+            ('optical_flow', self.optical_flow_sync),
+            ('color_histogram', self.color_histogram_sync),
+        ]
+
+        for name, method in methods:
+            try:
+                result = method(fp1, fp2, max_offset_seconds)
+                if result and result.confidence > 0.2:
+                    results.append(result)
+            except Exception as e:
+                print(f"Visual sync method {name} failed: {e}")
+
+        if not results:
+            return None
+
+        # Weighted fusion based on confidence
+        total_weight = sum(r.confidence for r in results)
+        if total_weight < 0.01:
+            return max(results, key=lambda r: r.confidence)
+
+        weighted_offset = sum(r.offset_seconds * r.confidence for r in results) / total_weight
+
+        # Combined confidence (higher when methods agree)
+        offsets = np.array([r.offset_seconds for r in results])
+        offset_std = np.std(offsets)
+        agreement_bonus = 1.0 / (1.0 + offset_std) * 0.2
+        max_confidence = max(r.confidence for r in results)
+        fused_confidence = min(1.0, max_confidence + agreement_bonus)
+
+        return VisualSyncResult(
+            source_file=fp1.file_path,
+            target_file=fp2.file_path,
+            offset_frames=int(weighted_offset * fp1.fps),
+            offset_seconds=weighted_offset,
+            confidence=fused_confidence,
+            method="ensemble_visual",
+            matching_events=[(len(results), 0, fused_confidence)]
+        )

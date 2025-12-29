@@ -501,9 +501,14 @@ class TelemetryExtractor:
 
         try:
             values = coord_tag.values
-            degrees = float(values[0].num) / float(values[0].den)
-            minutes = float(values[1].num) / float(values[1].den)
-            seconds = float(values[2].num) / float(values[2].den)
+            # Safely handle division, avoid div by zero
+            den0 = float(values[0].den) if values[0].den != 0 else 1.0
+            den1 = float(values[1].den) if values[1].den != 0 else 1.0
+            den2 = float(values[2].den) if values[2].den != 0 else 1.0
+
+            degrees = float(values[0].num) / den0
+            minutes = float(values[1].num) / den1
+            seconds = float(values[2].num) / den2
 
             decimal = degrees + minutes / 60 + seconds / 3600
 
