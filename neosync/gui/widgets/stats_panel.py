@@ -2,19 +2,20 @@
 Stats Panel Widget
 ==================
 
-Display sync statistics and project summary.
+Clean, modern statistics display panel.
 """
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QGridLayout
 )
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QPainter, QColor, QPen
 
 from ...core.sync_engine import SyncProject, SyncQuality
 
 
 class StatCard(QFrame):
-    """Individual stat card"""
+    """Clean stat card with minimal design"""
 
     def __init__(self, title: str, value: str = "0", color: str = "#8b5cf6", parent=None):
         super().__init__(parent)
@@ -22,37 +23,40 @@ class StatCard(QFrame):
         self._value = value
         self._color = color
 
-        self.setStyleSheet(f"""
-            StatCard {{
-                background-color: #1a1a1a;
-                border: 1px solid #333;
-                border-radius: 12px;
-                padding: 16px;
-            }}
+        self.setStyleSheet("""
+            StatCard {
+                background-color: #161616;
+                border: 1px solid #232323;
+                border-radius: 10px;
+            }
         """)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 16, 16, 16)
-        layout.setSpacing(4)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(2)
 
         # Value
         self.value_label = QLabel(value)
         self.value_label.setStyleSheet(f"""
-            font-size: 32px;
+            font-size: 26px;
             font-weight: 700;
             color: {color};
+            letter-spacing: -1px;
         """)
         layout.addWidget(self.value_label)
 
         # Title
         title_label = QLabel(title)
         title_label.setStyleSheet("""
-            font-size: 12px;
-            color: #888;
+            font-size: 10px;
+            color: #555;
             text-transform: uppercase;
             letter-spacing: 1px;
+            font-weight: 500;
         """)
         layout.addWidget(title_label)
+
+        self.setFixedHeight(72)
 
     def set_value(self, value: str):
         """Update the value"""
@@ -64,9 +68,9 @@ class QualityBar(QWidget):
     """Visual bar showing sync quality distribution"""
 
     COLORS = {
-        SyncQuality.EXCELLENT: "#22c55e",
+        SyncQuality.EXCELLENT: "#10b981",
         SyncQuality.GOOD: "#84cc16",
-        SyncQuality.FAIR: "#eab308",
+        SyncQuality.FAIR: "#f59e0b",
         SyncQuality.POOR: "#f97316",
         SyncQuality.FAILED: "#ef4444",
     }
@@ -74,7 +78,7 @@ class QualityBar(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._counts = {}
-        self.setFixedHeight(32)
+        self.setFixedHeight(6)
 
     def set_counts(self, counts: dict):
         """Set quality counts"""
@@ -83,19 +87,21 @@ class QualityBar(QWidget):
 
     def paintEvent(self, event):
         """Paint the quality bar"""
-        from PyQt6.QtGui import QPainter, QColor
-
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         total = sum(self._counts.values()) if self._counts else 0
+
+        # Background
+        painter.setBrush(QColor("#1e1e1e"))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawRoundedRect(self.rect(), 3, 3)
+
         if total == 0:
-            painter.fillRect(self.rect(), QColor("#1a1a1a"))
             return
 
         x = 0
-        height = self.height() - 8
-        y = 4
+        height = self.height()
 
         for quality in [SyncQuality.EXCELLENT, SyncQuality.GOOD, SyncQuality.FAIR,
                        SyncQuality.POOR, SyncQuality.FAILED]:
@@ -103,13 +109,19 @@ class QualityBar(QWidget):
             if count > 0:
                 width = int((count / total) * self.width())
                 color = QColor(self.COLORS.get(quality, "#666"))
-                painter.fillRect(x, y, max(width, 2), height, color)
+                painter.setBrush(color)
+
+                # Handle corners
+                if x == 0:
+                    painter.drawRoundedRect(x, 0, max(width, 3), height, 3, 3)
+                else:
+                    painter.drawRect(x, 0, max(width, 2), height)
                 x += width
 
 
 class StatsPanel(QWidget):
     """
-    Project statistics panel
+    Clean project statistics panel
 
     Shows:
     - Total clips
@@ -127,60 +139,77 @@ class StatsPanel(QWidget):
         """Setup the UI"""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(16)
+        layout.setSpacing(12)
 
-        # Title
-        title = QLabel("Statistics")
-        title.setStyleSheet("font-size: 16px; font-weight: 600;")
-        layout.addWidget(title)
+        # Section header
+        header = QLabel("Overview")
+        header.setStyleSheet("""
+            font-size: 13px;
+            font-weight: 600;
+            color: #888;
+            letter-spacing: 0.5px;
+        """)
+        layout.addWidget(header)
 
         # Stats grid
         grid = QGridLayout()
-        grid.setSpacing(12)
+        grid.setSpacing(8)
+        grid.setContentsMargins(0, 0, 0, 0)
 
-        self.total_card = StatCard("Total Clips", "0", "#8b5cf6")
+        self.total_card = StatCard("Clips", "0", "#a78bfa")
         grid.addWidget(self.total_card, 0, 0)
 
-        self.synced_card = StatCard("Synced", "0", "#22c55e")
+        self.synced_card = StatCard("Synced", "0", "#10b981")
         grid.addWidget(self.synced_card, 0, 1)
 
         self.failed_card = StatCard("Failed", "0", "#ef4444")
         grid.addWidget(self.failed_card, 1, 0)
 
-        self.confidence_card = StatCard("Confidence", "0%", "#3b82f6")
+        self.confidence_card = StatCard("Avg Conf", "0%", "#3b82f6")
         grid.addWidget(self.confidence_card, 1, 1)
 
         layout.addLayout(grid)
 
-        # Quality distribution
-        quality_label = QLabel("Quality Distribution")
-        quality_label.setStyleSheet("font-size: 13px; color: #888; margin-top: 8px;")
-        layout.addWidget(quality_label)
+        # Quality section
+        layout.addSpacing(8)
+
+        quality_header = QLabel("Quality")
+        quality_header.setStyleSheet("""
+            font-size: 11px;
+            color: #555;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 500;
+        """)
+        layout.addWidget(quality_header)
 
         self.quality_bar = QualityBar()
         layout.addWidget(self.quality_bar)
 
-        # Quality legend
+        # Quality legend - compact single row
         legend_layout = QHBoxLayout()
-        legend_layout.setSpacing(16)
+        legend_layout.setSpacing(8)
+        legend_layout.setContentsMargins(0, 4, 0, 0)
 
-        for quality, color in [
-            (SyncQuality.EXCELLENT, "#22c55e"),
-            (SyncQuality.GOOD, "#84cc16"),
-            (SyncQuality.FAIR, "#eab308"),
-            (SyncQuality.POOR, "#f97316"),
-            (SyncQuality.FAILED, "#ef4444"),
-        ]:
+        legends = [
+            ("Excellent", "#10b981"),
+            ("Good", "#84cc16"),
+            ("Fair", "#f59e0b"),
+            ("Poor", "#f97316"),
+            ("Failed", "#ef4444"),
+        ]
+
+        for name, color in legends:
             item = QHBoxLayout()
-            item.setSpacing(4)
+            item.setSpacing(3)
 
             dot = QLabel("●")
-            dot.setStyleSheet(f"color: {color}; font-size: 10px;")
+            dot.setStyleSheet(f"color: {color}; font-size: 8px;")
             item.addWidget(dot)
 
-            name = QLabel(quality.name.capitalize())
-            name.setStyleSheet("color: #888; font-size: 11px;")
-            item.addWidget(name)
+            label = QLabel(name[:3])  # Abbreviated
+            label.setStyleSheet("color: #444; font-size: 9px;")
+            item.addWidget(label)
 
             legend_layout.addLayout(item)
 
@@ -199,6 +228,7 @@ class StatsPanel(QWidget):
         # Calculate quality distribution
         counts = {q: 0 for q in SyncQuality}
         for clip in project.clips:
-            counts[clip.sync_quality] = counts.get(clip.sync_quality, 0) + 1
+            if clip.sync_quality:
+                counts[clip.sync_quality] = counts.get(clip.sync_quality, 0) + 1
 
         self.quality_bar.set_counts(counts)

@@ -182,21 +182,61 @@ class MainWindow(QMainWindow):
 
         center_layout.addWidget(self.stack)
 
-        # Action buttons
+        # Action buttons with consistent styling
         btn_row = QHBoxLayout()
-        btn_row.setSpacing(12)
+        btn_row.setSpacing(10)
+
+        secondary_btn_style = """
+            QPushButton {
+                background-color: #1e1e1e;
+                border: 1px solid #2a2a2a;
+                border-radius: 8px;
+                color: #ccc;
+                font-size: 13px;
+                font-weight: 500;
+                padding: 8px 16px;
+            }
+            QPushButton:hover {
+                background-color: #252525;
+                border-color: #333;
+            }
+            QPushButton:disabled {
+                background-color: #161616;
+                color: #444;
+                border-color: #1e1e1e;
+            }
+        """
 
         self.add_btn = QPushButton("Add Clips")
+        self.add_btn.setStyleSheet(secondary_btn_style)
         self.add_btn.clicked.connect(self._add_clips)
         btn_row.addWidget(self.add_btn)
 
         self.analyze_btn = QPushButton("Analyze")
+        self.analyze_btn.setStyleSheet(secondary_btn_style)
         self.analyze_btn.clicked.connect(self._analyze_all)
         self.analyze_btn.setEnabled(False)
         btn_row.addWidget(self.analyze_btn)
 
         self.sync_btn = QPushButton("Sync All")
-        self.sync_btn.setProperty("class", "primary")
+        self.sync_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #7c3aed;
+                border: none;
+                border-radius: 8px;
+                color: white;
+                font-size: 13px;
+                font-weight: 600;
+                padding: 8px 20px;
+            }
+            QPushButton:hover {
+                background-color: #8b5cf6;
+            }
+            QPushButton:disabled {
+                background-color: #3d2a5c;
+                color: #6b5980;
+            }
+        """)
         self.sync_btn.clicked.connect(self._sync_all)
         self.sync_btn.setEnabled(False)
         btn_row.addWidget(self.sync_btn)
@@ -204,7 +244,24 @@ class MainWindow(QMainWindow):
         btn_row.addStretch()
 
         self.export_btn = QPushButton("Export")
-        self.export_btn.setProperty("class", "success")
+        self.export_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #10b981;
+                border: none;
+                border-radius: 8px;
+                color: white;
+                font-size: 13px;
+                font-weight: 600;
+                padding: 8px 20px;
+            }
+            QPushButton:hover {
+                background-color: #34d399;
+            }
+            QPushButton:disabled {
+                background-color: #1a3d30;
+                color: #3d6b5c;
+            }
+        """)
         self.export_btn.clicked.connect(self._export)
         self.export_btn.setEnabled(False)
         btn_row.addWidget(self.export_btn)

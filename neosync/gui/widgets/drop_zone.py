@@ -2,25 +2,27 @@
 Drop Zone Widget
 ================
 
-Beautiful drag-and-drop area for adding clips.
+Modern drag-and-drop area for adding clips.
 """
 
+import os
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QPushButton, QFileDialog
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QMimeData
-from PyQt6.QtGui import QDragEnterEvent, QDropEvent, QPainter, QPen, QColor
+from PyQt6.QtGui import QDragEnterEvent, QDropEvent, QPainter, QPen, QColor, QFont
 
 
 class DropZone(QWidget):
     """
-    Drag and drop zone for adding media files
+    Modern drag and drop zone for adding media files
 
     Features:
+    - Clean minimal design
     - Drag and drop support
     - Click to browse
     - Visual feedback on drag
-    - File filtering
+    - File and folder support
     """
 
     files_dropped = pyqtSignal(list)  # Emits list of file paths
@@ -41,46 +43,79 @@ class DropZone(QWidget):
         """Setup the UI"""
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.setSpacing(20)
-        layout.setContentsMargins(40, 60, 40, 60)
+        layout.setSpacing(16)
+        layout.setContentsMargins(60, 80, 60, 80)
 
-        # Icon (using Unicode for simplicity, can be replaced with actual icon)
-        icon_label = QLabel("📁")
-        icon_label.setStyleSheet("font-size: 64px;")
-        icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(icon_label)
+        # Upload icon (clean SVG-style arrow)
+        self.icon_label = QLabel()
+        self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.icon_label.setFixedSize(80, 80)
+        self.icon_label.setStyleSheet("""
+            QLabel {
+                background: transparent;
+            }
+        """)
+        layout.addWidget(self.icon_label, alignment=Qt.AlignmentFlag.AlignCenter)
 
         # Main text
-        title = QLabel("Drop your clips or folders here")
-        title.setProperty("class", "title")
+        title = QLabel("Drop media files or folders")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setStyleSheet("font-size: 20px; font-weight: 600;")
+        title.setStyleSheet("""
+            font-size: 18px;
+            font-weight: 600;
+            color: #e0e0e0;
+            letter-spacing: -0.3px;
+        """)
         layout.addWidget(title)
 
         # Subtitle
-        subtitle = QLabel("or click to browse")
-        subtitle.setProperty("class", "subtitle")
+        subtitle = QLabel("or browse to select")
         subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        subtitle.setStyleSheet("font-size: 14px; color: #888;")
+        subtitle.setStyleSheet("""
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 8px;
+        """)
         layout.addWidget(subtitle)
 
         # Browse button
         browse_btn = QPushButton("Browse Files")
-        browse_btn.setProperty("class", "primary")
         browse_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         browse_btn.clicked.connect(self._browse_files)
-        browse_btn.setFixedWidth(200)
+        browse_btn.setFixedSize(140, 42)
+        browse_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #7c3aed;
+                color: white;
+                border: none;
+                border-radius: 8px;
+                font-size: 14px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #8b5cf6;
+            }
+            QPushButton:pressed {
+                background-color: #6d28d9;
+            }
+        """)
         layout.addWidget(browse_btn, alignment=Qt.AlignmentFlag.AlignCenter)
 
+        # Spacer
+        layout.addSpacing(16)
+
         # Supported formats
-        formats_label = QLabel("Supports: MP4, MOV, MXF, WAV, MP3, folders, and more")
-        formats_label.setProperty("class", "muted")
+        formats_label = QLabel("MP4 · MOV · MXF · WAV · MP3 · Folders")
         formats_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        formats_label.setStyleSheet("font-size: 12px; color: #666; margin-top: 20px;")
+        formats_label.setStyleSheet("""
+            font-size: 12px;
+            color: #4a4a4a;
+            letter-spacing: 0.5px;
+        """)
         layout.addWidget(formats_label)
 
         # Set minimum size
-        self.setMinimumSize(400, 300)
+        self.setMinimumSize(400, 320)
 
     def _browse_files(self):
         """Open file browser dialog"""
@@ -124,12 +159,10 @@ class DropZone(QWidget):
 
     def _is_directory(self, path: str) -> bool:
         """Check if path is a directory"""
-        import os
         return os.path.isdir(path)
 
     def _collect_files_from_folder(self, folder_path: str) -> list:
         """Recursively collect all supported media files from a folder"""
-        import os
         collected_files = []
 
         try:
@@ -154,7 +187,6 @@ class DropZone(QWidget):
 
     def _is_supported_file(self, path: str) -> bool:
         """Check if file is supported"""
-        import os
         ext = os.path.splitext(path)[1].lower()
         return ext in self.SUPPORTED_EXTENSIONS
 
@@ -165,17 +197,80 @@ class DropZone(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        # Draw dashed border
+        rect = self.rect().adjusted(20, 20, -20, -20)
+
+        # Draw background and border
         if self._dragging:
-            pen = QPen(QColor("#8b5cf6"), 3, Qt.PenStyle.DashLine)
-            bg_color = QColor("#8b5cf620")
+            # Active drop state
+            bg_color = QColor("#7c3aed")
+            bg_color.setAlpha(15)
+            border_color = QColor("#7c3aed")
+            border_width = 2
         else:
-            pen = QPen(QColor("#333333"), 2, Qt.PenStyle.DashLine)
-            bg_color = QColor("#1a1a1a")
+            # Default state
+            bg_color = QColor("#141414")
+            border_color = QColor("#2a2a2a")
+            border_width = 1
 
-        painter.setPen(pen)
+        # Fill background
         painter.setBrush(bg_color)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawRoundedRect(rect, 16, 16)
 
-        # Draw rounded rectangle
-        rect = self.rect().adjusted(10, 10, -10, -10)
-        painter.drawRoundedRect(rect, 20, 20)
+        # Draw dashed border
+        pen = QPen(border_color, border_width, Qt.PenStyle.DashLine)
+        pen.setDashPattern([8, 6])
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRoundedRect(rect.adjusted(1, 1, -1, -1), 16, 16)
+
+        # Draw upload icon
+        self._draw_upload_icon(painter, rect)
+
+    def _draw_upload_icon(self, painter: QPainter, rect):
+        """Draw a clean upload arrow icon"""
+        icon_size = 48
+        icon_x = rect.center().x() - icon_size // 2
+        icon_y = rect.top() + 50
+
+        # Icon color
+        if self._dragging:
+            color = QColor("#7c3aed")
+        else:
+            color = QColor("#404040")
+
+        pen = QPen(color, 2.5)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        painter.setPen(pen)
+
+        center_x = icon_x + icon_size // 2
+        center_y = icon_y + icon_size // 2
+
+        # Draw arrow pointing up
+        arrow_height = 18
+        arrow_width = 14
+
+        # Arrow stem
+        painter.drawLine(
+            center_x, center_y + arrow_height // 2,
+            center_x, center_y - arrow_height // 2
+        )
+
+        # Arrow head
+        painter.drawLine(
+            center_x, center_y - arrow_height // 2,
+            center_x - arrow_width // 2, center_y - arrow_height // 2 + arrow_width // 2
+        )
+        painter.drawLine(
+            center_x, center_y - arrow_height // 2,
+            center_x + arrow_width // 2, center_y - arrow_height // 2 + arrow_width // 2
+        )
+
+        # Draw base line (folder/tray)
+        tray_y = center_y + arrow_height // 2 + 8
+        tray_width = 28
+        painter.drawLine(
+            center_x - tray_width // 2, tray_y,
+            center_x + tray_width // 2, tray_y
+        )

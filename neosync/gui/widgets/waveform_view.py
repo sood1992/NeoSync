@@ -51,23 +51,23 @@ class WaveformView(QWidget):
 
         # Header
         header = QHBoxLayout()
-        header.setContentsMargins(16, 8, 16, 8)
+        header.setContentsMargins(12, 10, 12, 10)
 
         label = QLabel("Waveform")
-        label.setStyleSheet("font-weight: 600; font-size: 13px;")
+        label.setStyleSheet("font-weight: 600; font-size: 13px; color: #888;")
         header.addWidget(label)
 
         header.addStretch()
 
         # Zoom controls
         zoom_label = QLabel("Zoom:")
-        zoom_label.setStyleSheet("color: #888;")
+        zoom_label.setStyleSheet("color: #555; font-size: 12px;")
         header.addWidget(zoom_label)
 
         self.zoom_slider = QSlider(Qt.Orientation.Horizontal)
         self.zoom_slider.setRange(10, 1000)
         self.zoom_slider.setValue(100)
-        self.zoom_slider.setFixedWidth(100)
+        self.zoom_slider.setFixedWidth(80)
         self.zoom_slider.valueChanged.connect(self._on_zoom_changed)
         header.addWidget(self.zoom_slider)
 
@@ -80,20 +80,48 @@ class WaveformView(QWidget):
 
         # Footer with offset info
         footer = QHBoxLayout()
-        footer.setContentsMargins(16, 8, 16, 8)
+        footer.setContentsMargins(12, 8, 12, 10)
 
         self.offset_label = QLabel("Offset: 0.000s")
-        self.offset_label.setStyleSheet("color: #888; font-size: 12px;")
+        self.offset_label.setStyleSheet("color: #555; font-size: 11px; font-family: monospace;")
         footer.addWidget(self.offset_label)
 
         footer.addStretch()
 
         # Manual adjustment buttons
-        nudge_left = QPushButton("◀ -1 frame")
+        nudge_left = QPushButton("-1 frame")
+        nudge_left.setFixedSize(80, 28)
+        nudge_left.setStyleSheet("""
+            QPushButton {
+                background-color: #1e1e1e;
+                border: 1px solid #2a2a2a;
+                border-radius: 6px;
+                color: #888;
+                font-size: 11px;
+            }
+            QPushButton:hover {
+                background-color: #252525;
+                border-color: #333;
+            }
+        """)
         nudge_left.clicked.connect(lambda: self._nudge(-1))
         footer.addWidget(nudge_left)
 
-        nudge_right = QPushButton("+1 frame ▶")
+        nudge_right = QPushButton("+1 frame")
+        nudge_right.setFixedSize(80, 28)
+        nudge_right.setStyleSheet("""
+            QPushButton {
+                background-color: #1e1e1e;
+                border: 1px solid #2a2a2a;
+                border-radius: 6px;
+                color: #888;
+                font-size: 11px;
+            }
+            QPushButton:hover {
+                background-color: #252525;
+                border-color: #333;
+            }
+        """)
         nudge_right.clicked.connect(lambda: self._nudge(1))
         footer.addWidget(nudge_right)
 
@@ -226,19 +254,22 @@ class WaveformCanvas(QWidget):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         # Background
-        painter.fillRect(self.rect(), QColor("#0a0a0a"))
+        painter.fillRect(self.rect(), QColor("#0d0d0d"))
 
         height = self.height()
         width = self.width()
         mid_y = height // 2
 
-        # Draw center line
-        painter.setPen(QPen(QColor("#333"), 1))
+        # Draw subtle center line
+        painter.setPen(QPen(QColor("#1a1a1a"), 1))
         painter.drawLine(0, mid_y, width, mid_y)
 
         if self._reference is None and self._selected is None:
-            # Empty state
-            painter.setPen(QColor("#666"))
+            # Clean empty state
+            painter.setPen(QColor("#3a3a3a"))
+            font = painter.font()
+            font.setPointSize(12)
+            painter.setFont(font)
             painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter,
                            "Select a clip to view waveform")
             return
