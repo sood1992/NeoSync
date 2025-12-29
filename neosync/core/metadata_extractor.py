@@ -165,6 +165,21 @@ class MetadataExtractor:
         import shutil
         return shutil.which(name)
 
+    def _check_audio_fallback(self, file_path: str) -> bool:
+        """Fallback audio detection using librosa if ffprobe fails"""
+        try:
+            import librosa
+            # Try to load just a tiny bit of audio to check if it exists
+            y, sr = librosa.load(file_path, sr=None, mono=True, duration=0.1)
+            has_audio = len(y) > 0
+            if has_audio:
+                print(f"[INFO] Fallback audio detection: found audio in {Path(file_path).name}")
+            return has_audio
+        except Exception as e:
+            # If librosa can't load audio, there probably isn't any
+            print(f"[DEBUG] No audio detected in {Path(file_path).name}: {e}")
+            return False
+
     def extract(self, file_path: str, use_cache: bool = True) -> MediaMetadata:
         """
         Extract all metadata from media file
@@ -186,6 +201,12 @@ class MetadataExtractor:
         # Extract with ffprobe (primary source)
         if self.ffprobe_path:
             self._extract_ffprobe(metadata)
+        else:
+            print("[WARNING] ffprobe not found - audio detection may fail")
+
+        # Fallback audio detection if ffprobe didn't detect audio
+        if not metadata.has_audio:
+            metadata.has_audio = self._check_audio_fallback(file_path)
 
         # Extract with exiftool (additional metadata)
         if self.exiftool_path:
@@ -215,6 +236,11 @@ class MetadataExtractor:
                 metadata.file_path
             ]
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+
+            if result.returncode != 0:
+                print(f"ffprobe failed for {metadata.file_path}: {result.stderr}")
+                return
+
             data = json.loads(result.stdout)
 
             # Format info
