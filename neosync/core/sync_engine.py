@@ -291,15 +291,17 @@ class SyncEngine:
                     # Report metadata done
                     self._report_progress((completed + 0.3) / total, f"Extracting audio: {clip.file_name}")
 
-                # Audio fingerprint (can be slow)
+                # Audio fingerprint (fast for sync)
                 if analyze_audio and clip.has_audio:
                     clip.audio_fingerprint = self.audio_analyzer.compute_fingerprint(
                         clip.file_path
                     )
-                    self._report_progress((completed + 0.6) / total, f"Analyzing video: {clip.file_name}")
+                    self._report_progress((completed + 0.8) / total, f"Audio analyzed: {clip.file_name}")
 
-                # Visual fingerprint (for all clips, essential for audio-less)
-                if analyze_visual:
+                # Visual fingerprint ONLY for clips without audio (like DJI drones)
+                # Skip visual analysis when audio is available - audio sync is much faster
+                if analyze_visual and not clip.has_audio:
+                    self._report_progress((completed + 0.5) / total, f"Analyzing video (no audio): {clip.file_name}")
                     clip.visual_fingerprint = self.visual_analyzer.analyze_video(
                         clip.file_path
                     )
