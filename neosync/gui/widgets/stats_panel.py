@@ -9,7 +9,6 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QGridLayout
 )
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QPainter, QColor, QPen
 
 from ...core.sync_engine import SyncProject, SyncQuality
 
@@ -64,8 +63,8 @@ class StatCard(QFrame):
         self.value_label.setText(value)
 
 
-class QualityBar(QWidget):
-    """Visual bar showing sync quality distribution"""
+class QualityBar(QFrame):
+    """Visual bar showing sync quality distribution - using QFrame with stylesheet"""
 
     COLORS = {
         SyncQuality.EXCELLENT: "#10b981",
@@ -79,49 +78,20 @@ class QualityBar(QWidget):
         super().__init__(parent)
         self._counts = {}
         self.setFixedHeight(6)
+        self.setStyleSheet("background-color: #1e1e1e; border-radius: 3px;")
 
     def set_counts(self, counts: dict):
-        """Set quality counts"""
+        """Set quality counts - update background color based on majority"""
         self._counts = counts
-        self.update()
+        total = sum(counts.values()) if counts else 0
 
-    def paintEvent(self, event):
-        """Paint the quality bar - with crash protection"""
-        painter = None
-        try:
-            painter = QPainter(self)
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-            total = sum(self._counts.values()) if self._counts else 0
-
-            # Background
-            painter.setBrush(QColor("#1e1e1e"))
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.drawRoundedRect(self.rect(), 3, 3)
-
-            if total > 0:
-                x = 0
-                height = self.height()
-
-                for quality in [SyncQuality.EXCELLENT, SyncQuality.GOOD, SyncQuality.FAIR,
-                               SyncQuality.POOR, SyncQuality.FAILED]:
-                    count = self._counts.get(quality, 0)
-                    if count > 0:
-                        width = int((count / total) * self.width())
-                        color = QColor(self.COLORS.get(quality, "#666"))
-                        painter.setBrush(color)
-
-                        # Handle corners
-                        if x == 0:
-                            painter.drawRoundedRect(x, 0, max(width, 3), height, 3, 3)
-                        else:
-                            painter.drawRect(x, 0, max(width, 2), height)
-                        x += width
-        except Exception as e:
-            print(f"[ERROR] QualityBar.paintEvent: {e}")
-        finally:
-            if painter:
-                painter.end()
+        if total > 0:
+            # Find the dominant quality
+            dominant = max(counts.keys(), key=lambda q: counts.get(q, 0))
+            color = self.COLORS.get(dominant, "#1e1e1e")
+            self.setStyleSheet(f"background-color: {color}; border-radius: 3px;")
+        else:
+            self.setStyleSheet("background-color: #1e1e1e; border-radius: 3px;")
 
 
 class StatsPanel(QWidget):

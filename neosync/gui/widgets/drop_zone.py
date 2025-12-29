@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QPushButton, QFileDialog
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QMimeData
-from PyQt6.QtGui import QDragEnterEvent, QDropEvent, QPainter, QPen, QColor, QFont
+from PyQt6.QtGui import QDragEnterEvent, QDropEvent
 
 
 class DropZone(QWidget):
@@ -38,6 +38,7 @@ class DropZone(QWidget):
         self.setAcceptDrops(True)
         self._dragging = False
         self._setup_ui()
+        self._update_style()
 
     def _setup_ui(self):
         """Setup the UI"""
@@ -133,17 +134,17 @@ class DropZone(QWidget):
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
             self._dragging = True
-            self.update()
+            self._update_style()
 
     def dragLeaveEvent(self, event):
         """Handle drag leave"""
         self._dragging = False
-        self.update()
+        self._update_style()
 
     def dropEvent(self, event: QDropEvent):
         """Handle file and folder drop"""
         self._dragging = False
-        self.update()
+        self._update_style()
 
         files = []
         for url in event.mimeData().urls():
@@ -190,94 +191,21 @@ class DropZone(QWidget):
         ext = os.path.splitext(path)[1].lower()
         return ext in self.SUPPORTED_EXTENSIONS
 
-    def paintEvent(self, event):
-        """Custom paint for drop zone - with crash protection"""
-        painter = None
-        try:
-            super().paintEvent(event)
-
-            painter = QPainter(self)
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-            rect = self.rect().adjusted(20, 20, -20, -20)
-
-            # Draw background and border
-            if self._dragging:
-                # Active drop state
-                bg_color = QColor("#7c3aed")
-                bg_color.setAlpha(15)
-                border_color = QColor("#7c3aed")
-                border_width = 2
-            else:
-                # Default state
-                bg_color = QColor("#141414")
-                border_color = QColor("#2a2a2a")
-                border_width = 1
-
-            # Fill background
-            painter.setBrush(bg_color)
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.drawRoundedRect(rect, 16, 16)
-
-            # Draw dashed border
-            pen = QPen(border_color, border_width, Qt.PenStyle.DashLine)
-            pen.setDashPattern([8, 6])
-            painter.setPen(pen)
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.drawRoundedRect(rect.adjusted(1, 1, -1, -1), 16, 16)
-
-            # Draw upload icon
-            self._draw_upload_icon(painter, rect)
-        except Exception as e:
-            print(f"[ERROR] DropZone.paintEvent: {e}")
-        finally:
-            if painter:
-                painter.end()
-
-    def _draw_upload_icon(self, painter: QPainter, rect):
-        """Draw a clean upload arrow icon"""
-        icon_size = 48
-        icon_x = rect.center().x() - icon_size // 2
-        icon_y = rect.top() + 50
-
-        # Icon color
+    def _update_style(self):
+        """Update stylesheet based on drag state"""
         if self._dragging:
-            color = QColor("#7c3aed")
+            self.setStyleSheet("""
+                DropZone {
+                    background-color: rgba(124, 58, 237, 0.1);
+                    border: 2px dashed #7c3aed;
+                    border-radius: 16px;
+                }
+            """)
         else:
-            color = QColor("#404040")
-
-        pen = QPen(color, 2.5)
-        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
-        painter.setPen(pen)
-
-        center_x = icon_x + icon_size // 2
-        center_y = icon_y + icon_size // 2
-
-        # Draw arrow pointing up
-        arrow_height = 18
-        arrow_width = 14
-
-        # Arrow stem
-        painter.drawLine(
-            center_x, center_y + arrow_height // 2,
-            center_x, center_y - arrow_height // 2
-        )
-
-        # Arrow head
-        painter.drawLine(
-            center_x, center_y - arrow_height // 2,
-            center_x - arrow_width // 2, center_y - arrow_height // 2 + arrow_width // 2
-        )
-        painter.drawLine(
-            center_x, center_y - arrow_height // 2,
-            center_x + arrow_width // 2, center_y - arrow_height // 2 + arrow_width // 2
-        )
-
-        # Draw base line (folder/tray)
-        tray_y = center_y + arrow_height // 2 + 8
-        tray_width = 28
-        painter.drawLine(
-            center_x - tray_width // 2, tray_y,
-            center_x + tray_width // 2, tray_y
-        )
+            self.setStyleSheet("""
+                DropZone {
+                    background-color: #141414;
+                    border: 1px dashed #2a2a2a;
+                    border-radius: 16px;
+                }
+            """)
