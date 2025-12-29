@@ -268,47 +268,61 @@ class ClipTableWidget(QWidget):
         self.count_label.setText(f"{len(self._clips)} clips")
 
     def _update_row(self, row: int, clip: ClipInfo):
-        """Update a single row"""
-        # File name
-        name_item = QTableWidgetItem(clip.file_name)
-        name_item.setData(Qt.ItemDataRole.UserRole, clip)
-        name_item.setForeground(QColor(clip.color_code))
-        self.table.setItem(row, 0, name_item)
+        """Update a single row with defensive null checks"""
+        try:
+            # File name
+            name_item = QTableWidgetItem(clip.file_name or "Unknown")
+            name_item.setData(Qt.ItemDataRole.UserRole, clip)
+            color_code = clip.color_code if clip.color_code else "#808080"
+            name_item.setForeground(QColor(color_code))
+            self.table.setItem(row, 0, name_item)
 
-        # Duration
-        duration = f"{clip.duration:.1f}s" if clip.duration else "-"
-        self.table.setItem(row, 1, QTableWidgetItem(duration))
+            # Duration - safely handle None/0
+            duration_val = clip.duration if clip.duration is not None else 0
+            duration = f"{duration_val:.1f}s" if duration_val > 0 else "-"
+            self.table.setItem(row, 1, QTableWidgetItem(duration))
 
-        # Camera
-        camera = clip.camera_id or "Unknown"
-        self.table.setItem(row, 2, QTableWidgetItem(camera))
+            # Camera
+            camera = clip.camera_id or "Unknown"
+            self.table.setItem(row, 2, QTableWidgetItem(camera))
 
-        # Status (custom delegate)
-        status_item = QTableWidgetItem()
-        status_item.setData(Qt.ItemDataRole.UserRole, clip)
-        self.table.setItem(row, 3, status_item)
+            # Status (custom delegate)
+            status_item = QTableWidgetItem()
+            status_item.setData(Qt.ItemDataRole.UserRole, clip)
+            self.table.setItem(row, 3, status_item)
 
-        # Confidence (custom delegate)
-        conf_item = QTableWidgetItem()
-        conf_item.setData(Qt.ItemDataRole.UserRole, clip)
-        self.table.setItem(row, 4, conf_item)
+            # Confidence (custom delegate)
+            conf_item = QTableWidgetItem()
+            conf_item.setData(Qt.ItemDataRole.UserRole, clip)
+            self.table.setItem(row, 4, conf_item)
 
-        # Offset
-        offset = f"{clip.sync_offset_seconds:+.3f}s"
-        self.table.setItem(row, 5, QTableWidgetItem(offset))
+            # Offset - safely handle None
+            offset_val = clip.sync_offset_seconds if clip.sync_offset_seconds is not None else 0.0
+            offset = f"{offset_val:+.3f}s"
+            self.table.setItem(row, 5, QTableWidgetItem(offset))
 
-        # Method
-        method = clip.sync_method.value if clip.sync_method else "-"
-        self.table.setItem(row, 6, QTableWidgetItem(method))
+            # Method
+            method = clip.sync_method.value if clip.sync_method else "-"
+            self.table.setItem(row, 6, QTableWidgetItem(method))
 
-        # Audio
-        audio = "✓" if clip.has_audio else "✗"
-        audio_item = QTableWidgetItem(audio)
-        audio_item.setForeground(QColor("#22c55e" if clip.has_audio else "#666"))
-        self.table.setItem(row, 7, audio_item)
+            # Audio - safely check has_audio property
+            try:
+                has_audio = clip.has_audio
+            except (AttributeError, TypeError):
+                has_audio = False
+            audio = "Yes" if has_audio else "No"
+            audio_item = QTableWidgetItem(audio)
+            audio_item.setForeground(QColor("#22c55e" if has_audio else "#666"))
+            self.table.setItem(row, 7, audio_item)
 
-        # Row height
-        self.table.setRowHeight(row, 48)
+            # Row height
+            self.table.setRowHeight(row, 48)
+
+        except Exception as e:
+            # Log error but don't crash - show placeholder row
+            print(f"Error updating row {row}: {e}")
+            self.table.setItem(row, 0, QTableWidgetItem(clip.file_name if clip else "Error"))
+            self.table.setRowHeight(row, 48)
 
     def _show_context_menu(self, pos):
         """Show context menu"""

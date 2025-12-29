@@ -219,16 +219,22 @@ class StatsPanel(QWidget):
         layout.addStretch()
 
     def update_stats(self, project: SyncProject):
-        """Update stats from project"""
-        self.total_card.set_value(str(len(project.clips)))
-        self.synced_card.set_value(str(project.total_synced))
-        self.failed_card.set_value(str(project.total_failed))
-        self.confidence_card.set_value(f"{project.average_confidence:.0%}")
+        """Update stats from project with defensive null checks"""
+        try:
+            clips = project.clips or []
+            self.total_card.set_value(str(len(clips)))
+            self.synced_card.set_value(str(project.total_synced or 0))
+            self.failed_card.set_value(str(project.total_failed or 0))
 
-        # Calculate quality distribution
-        counts = {q: 0 for q in SyncQuality}
-        for clip in project.clips:
-            if clip.sync_quality:
-                counts[clip.sync_quality] = counts.get(clip.sync_quality, 0) + 1
+            avg_conf = project.average_confidence if project.average_confidence is not None else 0.0
+            self.confidence_card.set_value(f"{avg_conf:.0%}")
 
-        self.quality_bar.set_counts(counts)
+            # Calculate quality distribution with safe checks
+            counts = {q: 0 for q in SyncQuality}
+            for clip in clips:
+                if clip and clip.sync_quality is not None:
+                    counts[clip.sync_quality] = counts.get(clip.sync_quality, 0) + 1
+
+            self.quality_bar.set_counts(counts)
+        except Exception as e:
+            print(f"Error updating stats: {e}")

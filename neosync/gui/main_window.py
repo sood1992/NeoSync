@@ -437,26 +437,40 @@ class MainWindow(QMainWindow):
         self.status_bar.showMessage(message)
 
     def _update_ui_state(self):
-        """Update UI based on current state"""
-        has_clips = len(self.sync_engine.project.clips) > 0
-        has_synced = self.sync_engine.project.total_synced > 0
+        """Update UI based on current state - with crash protection"""
+        try:
+            clips = self.sync_engine.project.clips or []
+            has_clips = len(clips) > 0
+            has_synced = self.sync_engine.project.total_synced > 0
 
-        # Switch between drop zone and table
-        self.stack.setCurrentIndex(1 if has_clips else 0)
+            # Switch between drop zone and table
+            self.stack.setCurrentIndex(1 if has_clips else 0)
 
-        # Update buttons
-        self.analyze_btn.setEnabled(has_clips)
-        self.sync_btn.setEnabled(has_clips)
-        self.export_btn.setEnabled(has_synced)
+            # Update buttons
+            self.analyze_btn.setEnabled(has_clips)
+            self.sync_btn.setEnabled(has_clips)
+            self.export_btn.setEnabled(has_synced)
 
-        # Update clip table
-        self.clip_table.set_clips(self.sync_engine.project.clips)
+            # Update clip table - wrapped for safety
+            try:
+                self.clip_table.set_clips(clips)
+            except Exception as e:
+                print(f"Error updating clip table: {e}")
 
-        # Update stats
-        self.stats_panel.update_stats(self.sync_engine.project)
+            # Update stats - wrapped for safety
+            try:
+                self.stats_panel.update_stats(self.sync_engine.project)
+            except Exception as e:
+                print(f"Error updating stats panel: {e}")
 
-        # Update timeline
-        self.timeline_view.set_clips(self.sync_engine.project.clips)
+            # Update timeline - wrapped for safety
+            try:
+                self.timeline_view.set_clips(clips)
+            except Exception as e:
+                print(f"Error updating timeline: {e}")
+
+        except Exception as e:
+            print(f"Error in _update_ui_state: {e}")
 
     def _check_license(self):
         """Check license on startup"""
