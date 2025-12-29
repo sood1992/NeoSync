@@ -171,7 +171,7 @@ class WaveformView(QWidget):
 
 
 class WaveformCanvas(QWidget):
-    """Canvas for drawing waveforms"""
+    """Canvas for drawing waveforms - using safe rendering"""
 
     offset_changed = pyqtSignal(int)  # Pixel offset
 
@@ -183,6 +183,7 @@ class WaveformCanvas(QWidget):
         self._selected_offset = 0
         self._dragging = False
         self._drag_start = 0
+        self._use_safe_rendering = True  # Disable complex painting on macOS
 
         self.setMinimumHeight(200)
         self.setMouseTracking(True)
@@ -250,89 +251,51 @@ class WaveformCanvas(QWidget):
         return display
 
     def paintEvent(self, event):
-        """Paint the waveforms - simplified for stability"""
-        if self._reference is None and self._selected is None:
-            # Don't do custom painting when empty
+        """Paint the waveforms - with safe mode for macOS stability"""
+        # Always use safe rendering to avoid macOS crashes
+        if self._use_safe_rendering:
+            self._paint_safe(event)
             return
 
-        painter = None
+    def _paint_safe(self, event):
+        """Safe painting mode - minimal operations to avoid macOS crashes"""
+        painter = QPainter(self)
         try:
-            painter = QPainter(self)
             if not painter.isActive():
                 return
 
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-            # Background
+            # Simple solid background
             painter.fillRect(self.rect(), QColor("#0d0d0d"))
 
             height = self.height()
             width = self.width()
             mid_y = height // 2
 
-            # Draw subtle center line
-            painter.setPen(QPen(QColor("#1a1a1a"), 1))
+            # Draw simple center line
+            painter.setPen(QColor("#1a1a1a"))
             painter.drawLine(0, mid_y, width, mid_y)
 
-            # Draw reference waveform (top half, blue)
+            # Draw simple placeholder rectangles for waveforms (no complex paths or gradients)
             if self._reference is not None:
-                ref_data = self._get_display_data(self._reference, width)
-                self._draw_waveform(painter, ref_data, 10, mid_y - 20, "#3b82f6", "Reference")
+                # Reference waveform area (top half, blue)
+                painter.setBrush(QColor("#3b82f6"))
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.drawRect(10, 20, width - 20, mid_y - 40)
 
-            # Draw selected waveform (bottom half, purple)
             if self._selected is not None:
-                sel_data = self._get_display_data(self._selected, width, self._selected_offset)
-                self._draw_waveform(painter, sel_data, mid_y + 10, height - mid_y - 20, "#8b5cf6", "Selected")
+                # Selected waveform area (bottom half, purple)
+                painter.setBrush(QColor("#8b5cf6"))
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.drawRect(10, mid_y + 20, width - 20, mid_y - 40)
 
-            # Draw alignment guide
-            painter.setPen(QPen(QColor("#22c55e"), 2, Qt.PenStyle.DashLine))
+            # Draw alignment guide line
+            painter.setPen(QColor("#22c55e"))
             painter.drawLine(width // 2, 0, width // 2, height)
+
         except Exception as e:
-            print(f"[ERROR] WaveformCanvas.paintEvent: {e}")
+            print(f"[ERROR] WaveformCanvas._paint_safe: {e}")
         finally:
-            if painter and painter.isActive():
-                painter.end()
-
-    def _draw_waveform(self, painter: QPainter, data: np.ndarray, y_start: int, height: int,
-                       color: str, label: str):
-        """Draw a waveform"""
-        if data is None or len(data) == 0:
-            return
-
-        # Create gradient
-        gradient = QLinearGradient(0, y_start, 0, y_start + height)
-        gradient.setColorAt(0, QColor(color))
-        gradient.setColorAt(1, QColor(color).darker(150))
-
-        painter.setBrush(gradient)
-        painter.setPen(Qt.PenStyle.NoPen)
-
-        # Draw waveform as filled path
-        mid = y_start + height // 2
-        scale = height / 2 * 0.9
-
-        path = QPainterPath()
-        path.moveTo(0, mid)
-
-        # Top half
-        for x, val in enumerate(data):
-            y = mid - val * scale
-            path.lineTo(x, y)
-
-        # Bottom half (mirror)
-        for x in range(len(data) - 1, -1, -1):
-            y = mid + data[x] * scale
-            path.lineTo(x, y)
-
-        path.closeSubpath()
-        painter.drawPath(path)
-
-        # Label
-        painter.setPen(QColor("#888"))
-        font = painter.font()
-        font.setPointSize(9)
-        painter.setFont(font)
-        painter.drawText(10, y_start + 15, label)
+            painter.end()
 
     def mousePressEvent(self, event):
         """Handle mouse press for dragging"""

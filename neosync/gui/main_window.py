@@ -115,9 +115,21 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        # Initialize managers
+        # Initialize managers with safe fallbacks
         self.license_manager = LicenseManager()
-        self.sync_engine = SyncEngine(use_gpu=True, noise_reduction=True)
+
+        # Try GPU first, fall back to CPU if it fails (macOS can have GPU issues)
+        try:
+            self.sync_engine = SyncEngine(use_gpu=True, noise_reduction=True)
+        except Exception as e:
+            print(f"[WARNING] GPU initialization failed, falling back to CPU: {e}")
+            try:
+                self.sync_engine = SyncEngine(use_gpu=False, noise_reduction=True)
+            except Exception as e2:
+                print(f"[ERROR] SyncEngine initialization failed: {e2}")
+                # Create a minimal engine as fallback
+                self.sync_engine = SyncEngine(use_gpu=False, noise_reduction=False)
+
         self.theme = Theme(ThemeMode.DARK)
         self.settings = QSettings("NeoFox", "NeoSync")
 

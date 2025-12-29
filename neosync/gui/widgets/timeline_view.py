@@ -216,7 +216,7 @@ class TimelineView(QWidget):
 
 
 class TimelineCanvas(QWidget):
-    """Canvas widget for drawing the timeline"""
+    """Canvas widget for drawing the timeline - using safe rendering"""
 
     TRACK_HEIGHT = 50
     HEADER_HEIGHT = 30
@@ -236,6 +236,7 @@ class TimelineCanvas(QWidget):
         self._offset = 0
         self._duration = 0
         self._zoom = 10
+        self._use_safe_rendering = True  # Disable complex painting on macOS
         self.setMouseTracking(True)
         self.setStyleSheet("background-color: #0d0d0d;")
 
@@ -247,126 +248,60 @@ class TimelineCanvas(QWidget):
         self._zoom = zoom
 
     def paintEvent(self, event):
-        """Paint the timeline - simplified for stability"""
-        if not self._tracks:
-            # Don't do custom painting when empty - use stylesheet
+        """Paint the timeline - with safe mode for macOS stability"""
+        # Always use safe rendering to avoid macOS crashes
+        if self._use_safe_rendering or not self._tracks:
+            # Use simple solid color rendering - no gradients or font modifications
+            self._paint_safe(event)
             return
 
-        painter = None
+    def _paint_safe(self, event):
+        """Safe painting mode - minimal operations to avoid macOS crashes"""
+        painter = QPainter(self)
         try:
-            painter = QPainter(self)
             if not painter.isActive():
                 return
 
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-            # Background
+            # Simple solid background
             painter.fillRect(self.rect(), QColor("#0d0d0d"))
 
-            # Draw time ruler
-            self._draw_ruler(painter)
+            if not self._tracks:
+                return
 
-            # Draw tracks
+            # Draw simple header bar
+            painter.fillRect(0, 0, self.width(), self.HEADER_HEIGHT, QColor("#1a1a1a"))
+
+            # Draw tracks with simple colored rectangles (no gradients, no font changes)
             y = self.HEADER_HEIGHT
             for i, (camera_id, clips) in enumerate(self._tracks.items()):
-                color = self.TRACK_COLORS[i % len(self.TRACK_COLORS)]
-                self._draw_track(painter, camera_id, clips, y, color, i)
+                # Track background - alternating colors
+                bg_color = QColor("#1e1e1e") if i % 2 == 0 else QColor("#1a1a1a")
+                painter.fillRect(0, y, self.width(), self.TRACK_HEIGHT, bg_color)
+
+                # Draw clips as simple rectangles
+                for clip in clips:
+                    clip_offset = clip.sync_offset_seconds if clip.sync_offset_seconds is not None else 0.0
+                    clip_duration = clip.duration if clip.duration is not None else 1.0
+
+                    clip_start = clip_offset - self._offset
+                    clip_x = int(clip_start * self._zoom) + 50
+                    clip_width = max(20, int(clip_duration * self._zoom))
+
+                    # Color based on sync quality
+                    sync_quality = clip.sync_quality if clip.sync_quality is not None else SyncQuality.FAILED
+                    clip_color = self.QUALITY_COLORS.get(sync_quality, "#666")
+
+                    # Simple filled rectangle - no gradient
+                    painter.setBrush(QColor(clip_color))
+                    painter.setPen(Qt.PenStyle.NoPen)
+                    painter.drawRect(clip_x, y + 5, clip_width, self.TRACK_HEIGHT - 10)
+
                 y += self.TRACK_HEIGHT
+
         except Exception as e:
-            print(f"[ERROR] TimelineCanvas.paintEvent: {e}")
+            print(f"[ERROR] TimelineCanvas._paint_safe: {e}")
         finally:
-            if painter and painter.isActive():
-                painter.end()
-
-    def _draw_ruler(self, painter: QPainter):
-        """Draw time ruler at top"""
-        painter.fillRect(0, 0, self.width(), self.HEADER_HEIGHT, QColor("#1a1a1a"))
-
-        if self._duration <= 0:
-            return
-
-        # Calculate tick interval
-        if self._zoom > 50:
-            interval = 1  # 1 second
-        elif self._zoom > 20:
-            interval = 5
-        elif self._zoom > 5:
-            interval = 10
-        elif self._zoom > 1:
-            interval = 30
-        else:
-            interval = 60
-
-        painter.setPen(QColor("#666"))
-        font = painter.font()
-        font.setPointSize(9)
-        painter.setFont(font)
-
-        # Draw ticks
-        t = 0
-        while t <= self._duration:
-            x = int(t * self._zoom) + 50
-            painter.drawLine(x, self.HEADER_HEIGHT - 10, x, self.HEADER_HEIGHT)
-
-            # Time label
-            label = self._format_time(t)
-            painter.drawText(x - 20, 5, 40, 15, Qt.AlignmentFlag.AlignCenter, label)
-
-            t += interval
-
-    def _draw_track(self, painter: QPainter, camera_id: str, clips: list, y: int, color: str, track_idx: int):
-        """Draw a single track with clips"""
-        # Track background
-        track_rect = QRect(0, y, self.width(), self.TRACK_HEIGHT)
-        bg_color = QColor("#1e1e1e") if track_idx % 2 == 0 else QColor("#1a1a1a")
-        painter.fillRect(track_rect, bg_color)
-
-        # Track label
-        painter.setPen(QColor("#888"))
-        font = painter.font()
-        font.setPointSize(10)
-        font.setBold(True)
-        painter.setFont(font)
-        painter.drawText(5, y + 5, 45, self.TRACK_HEIGHT - 10, Qt.AlignmentFlag.AlignVCenter, camera_id[:8])
-
-        # Draw clips
-        for clip in clips:
-            # Safely get values with fallbacks to prevent crashes
-            clip_offset = clip.sync_offset_seconds if clip.sync_offset_seconds is not None else 0.0
-            clip_duration = clip.duration if clip.duration is not None else 1.0
-
-            clip_start = clip_offset - self._offset
-            clip_x = int(clip_start * self._zoom) + 50
-            clip_width = max(20, int(clip_duration * self._zoom))
-
-            # Clip rectangle
-            clip_rect = QRect(clip_x, y + 5, clip_width, self.TRACK_HEIGHT - 10)
-
-            # Color based on sync quality - safely handle None
-            sync_quality = clip.sync_quality if clip.sync_quality is not None else SyncQuality.FAILED
-            clip_color = self.QUALITY_COLORS.get(sync_quality, "#666")
-
-            # Gradient fill
-            gradient = QLinearGradient(clip_x, y, clip_x, y + self.TRACK_HEIGHT)
-            gradient.setColorAt(0, QColor(clip_color))
-            gradient.setColorAt(1, QColor(clip_color).darker(130))
-
-            painter.setBrush(gradient)
-            painter.setPen(QPen(QColor(clip_color).lighter(120), 1))
-            painter.drawRoundedRect(clip_rect, 4, 4)
-
-            # Clip name
-            if clip_width > 50:
-                painter.setPen(QColor("#fff"))
-                font.setPointSize(9)
-                font.setBold(False)
-                painter.setFont(font)
-
-                text_rect = clip_rect.adjusted(8, 0, -8, 0)
-                text = clip.file_name
-                if len(text) > 20:
-                    text = text[:18] + "..."
-                painter.drawText(text_rect, Qt.AlignmentFlag.AlignVCenter, text)
+            painter.end()
 
     def _format_time(self, seconds: float) -> str:
         """Format seconds as timecode"""
